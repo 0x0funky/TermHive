@@ -22,7 +22,7 @@ Termhive solves this with a browser-based dashboard and a persistent knowledge l
 - **Terminal streaming** — Real xterm.js terminals with live PTY via WebSocket
 - **Split view** — Tmux-like recursive splitting with draggable dividers, per-project persistent layouts
 - **Shared content** — Centralized file store with auto `--add-dir` / `--include-directories` for all supported CLIs
-- **Project Memory** — Persistent knowledge base per project, inspired by [Karpathy's LLM Wiki](https://github.com/karpathy/llm-wiki) pattern
+- **Project Memory** — Persistent knowledge base per project, inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern
 - **Activity feed** — Real-time file watcher on shared content + agent lifecycle events
 - **Auto instruction files** — Generates `CLAUDE.md` / `AGENTS.md` in each agent's cwd with shared content and memory paths
 - **Agent flags** — `--dangerously-skip-permissions`, `--remote-control` for Claude Code
@@ -61,7 +61,7 @@ Server runs on `http://localhost:3200` (serves both API and frontend).
 
 ![Project Memory](project_memory.png)
 
-A persistent, structured knowledge base per project — inspired by [Karpathy's LLM Wiki](https://github.com/karpathy/llm-wiki) pattern. Instead of agents rediscovering project context from scratch every session, they read and maintain a living wiki.
+A persistent, structured knowledge base per project — inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern. Instead of agents rediscovering project context from scratch every session, they read and maintain a living wiki.
 
 ### How it works
 
