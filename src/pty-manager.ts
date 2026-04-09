@@ -93,16 +93,12 @@ function ensureInstructionFile(filePath: string, projectName: string, sharedPath
   const { marker, section } = buildTermhiveSection(sharedPath, memoryPath);
 
   if (fs.existsSync(filePath)) {
-    const existing = fs.readFileSync(filePath, 'utf-8');
-    if (existing.includes(marker)) {
-      const updated = existing.replace(
-        /<!-- Termhive -->[\s\S]*?<!-- End Termhive -->/,
-        marker + section.split(marker)[1]
-      );
-      fs.writeFileSync(filePath, updated, 'utf-8');
-    } else {
-      fs.appendFileSync(filePath, section, 'utf-8');
-    }
+    let existing = fs.readFileSync(filePath, 'utf-8');
+    // Remove all old sections (AgentOrg, Termhive Shared Content, previous Termhive)
+    existing = existing.replace(/\n*<!-- AgentOrg[^>]*-->[\s\S]*?<!-- End AgentOrg -->\n*/g, '\n');
+    existing = existing.replace(/\n*<!-- Termhive[^>]*-->[\s\S]*?<!-- End Termhive -->\n*/g, '\n');
+    // Append fresh section
+    fs.writeFileSync(filePath, existing.trimEnd() + '\n' + section, 'utf-8');
   } else {
     fs.writeFileSync(filePath, '# ' + projectName + '\n' + section, 'utf-8');
   }
