@@ -132,9 +132,8 @@ export default function ProjectMemory({ projectId }: Props) {
 
   if (!initialized) {
     return (
-      <div className="empty-state">
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', maxWidth: 420 }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>&#x1f9e0;</div>
           <h3 style={{ marginBottom: 8 }}>Project Memory</h3>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
             Initialize a persistent knowledge base for this project.
