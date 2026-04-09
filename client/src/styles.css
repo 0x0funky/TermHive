@@ -213,6 +213,12 @@ body {
   position: relative;
 }
 
+.terminal-container .xterm-helper-textarea {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 /* Force xterm to stay within container bounds */
 .terminal-container .xterm-screen,
 .terminal-container .xterm-viewport {

@@ -26,12 +26,12 @@ function timeAgo(timestamp: string): string {
 // Parse _log.md into entries
 function parseLog(content: string): { date: string; action: string; summary: string }[] {
   const entries: { date: string; action: string; summary: string }[] = [];
-  const regex = /^## \[(\d{4}-\d{2}-\d{2})\]\s*(\w+)\s*\|\s*(.+)$/gm;
+  const regex = /^## \[(\d{4}-\d{2}-\d{2})\]\s*(.+?)\s*\|\s*(.+)$/gm;
   let match;
   while ((match = regex.exec(content)) !== null) {
     entries.push({ date: match[1], action: match[2], summary: match[3] });
   }
-  return entries.reverse(); // newest first
+  return entries.reverse();
 }
 
 export default function ProjectMemory({ projectId }: Props) {
