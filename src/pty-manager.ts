@@ -232,6 +232,32 @@ export function removeOutputListener(agentId: string, listener: (data: string) =
   session.listeners.delete(listener);
 }
 
+export function getAgentPreview(agentId: string): string {
+  const session = sessions.get(agentId);
+  if (!session || session.buffer.length === 0) return '';
+  const tail = session.buffer.slice(-30).join('');
+  // Strip all ANSI/VT escape sequences
+  const stripped = tail
+    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')    // CSI sequences (including private ? mode)
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC sequences
+    .replace(/\x1b[()][A-Z0-9]/g, '')            // charset switches
+    .replace(/\x1b[>=<]/g, '')                    // keypad modes
+    .replace(/\x1b\[\?[0-9;]*[a-z]/g, '')        // private mode set/reset
+    .replace(/\r/g, '')                           // carriage returns
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ''); // control chars
+  const lines = stripped.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+  // Skip common noise lines
+  const meaningful = lines.filter(l =>
+    !l.startsWith('bypass permissions') &&
+    !l.startsWith('Remote Control') &&
+    !l.startsWith('Auto-update') &&
+    !l.startsWith('Spindle') &&
+    !l.match(/^\s*[>$%#]\s*$/)
+  );
+  const last = meaningful.length > 0 ? meaningful[meaningful.length - 1] : '';
+  return last.slice(0, 60);
+}
+
 export function isAgentRunning(agentId: string): boolean {
   return sessions.has(agentId);
 }

@@ -45,6 +45,15 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     res.json(agents);
   });
 
+  router.get('/projects/:id/agents/previews', (req: Request, res: Response) => {
+    const agents = storage.listAgents(req.params.id);
+    const previews: Record<string, string> = {};
+    for (const agent of agents) {
+      previews[agent.id] = ptyManager.getAgentPreview(agent.id);
+    }
+    res.json(previews);
+  });
+
   router.post('/projects/:id/agents', (req: Request, res: Response) => {
     const { name, cli, cwd, role, flags } = req.body;
     if (!name || !cli) {

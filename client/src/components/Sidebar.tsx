@@ -40,104 +40,115 @@ export default function Sidebar({
   if (collapsed) {
     return (
       <div
-        className="sidebar"
-        style={{ width: 40, minWidth: 40, alignItems: 'center', cursor: 'pointer' }}
+        className="sidebar sidebar-collapsed"
         onClick={() => setCollapsed(false)}
         title="Expand sidebar"
       >
-        <div style={{ padding: '12px 0', writingMode: 'vertical-rl', fontSize: 12, color: 'var(--text-secondary)', letterSpacing: 2 }}>
-          PROJECTS
-        </div>
-        <div style={{ fontSize: 16, marginTop: 8 }}>&#x25B6;</div>
+        <div className="sidebar-collapsed-label">PROJECTS</div>
+        <div className="sidebar-collapsed-arrow">&#x25B6;</div>
       </div>
     );
   }
 
   return (
     <div className="sidebar">
-      <div className="sidebar-section">
-        <div className="sidebar-title">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span
-              onClick={() => setCollapsed(true)}
-              style={{ cursor: 'pointer', fontSize: 12 }}
-              title="Collapse sidebar"
-            >&#x25C0;</span>
-            Projects
-          </div>
-          <button onClick={onNewProject}>+ New</button>
+      <div className="sidebar-header">
+        <div className="sidebar-header-left">
+          <span
+            onClick={() => setCollapsed(true)}
+            className="sidebar-collapse-btn"
+            title="Collapse sidebar"
+          >&#x25C0;</span>
+          <span className="sidebar-header-title">Projects</span>
         </div>
+        <button className="btn-sm btn-primary" onClick={onNewProject}>+ New</button>
+      </div>
+
+      <div className="sidebar-list">
         {projects.map(project => {
           const projectAgents = agents.get(project.id) || [];
           const isSelected = selectedProjectId === project.id;
           const isExpanded = expandedProjects.has(project.id);
+          const runningCount = projectAgents.filter(a => a.status === 'running').length;
 
           return (
-            <div key={project.id}>
+            <div key={project.id} className="sidebar-project">
               <div
-                className={`project-item ${isSelected ? 'active' : ''}`}
+                className={`sidebar-project-item ${isSelected ? 'active' : ''}`}
                 onClick={() => onSelectProject(project.id)}
               >
                 <span
                   onClick={(e) => { e.stopPropagation(); toggleProject(project.id); }}
-                  style={{ cursor: 'pointer', fontSize: 10, width: 14, textAlign: 'center', flexShrink: 0 }}
+                  className="sidebar-expand-btn"
                 >
                   {isExpanded ? '−' : '+'}
                 </span>
-                <span style={{ flex: 1 }}>{project.name}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                  {projectAgents.length > 0 ? `${projectAgents.length}` : ''}
-                </span>
-              </div>
-              {isExpanded && (
-                <>
+                <div className="sidebar-project-info">
+                  <span className="sidebar-project-name">{project.name}</span>
                   {projectAgents.length > 0 && (
-                    <div style={{ padding: '2px 8px 2px 28px', display: 'flex', gap: 4 }}>
+                    <span className="sidebar-project-stats">
+                      {runningCount > 0 && <span className="stats-running">{runningCount} running</span>}
+                      {runningCount === 0 && <span className="stats-total">{projectAgents.length} agents</span>}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="sidebar-agents">
+                  {projectAgents.length > 0 && (
+                    <div className="sidebar-agent-actions">
                       <button
                         onClick={(e) => { e.stopPropagation(); onStartAll(project.id); }}
-                        className="primary"
-                        style={{ fontSize: 10, padding: '2px 8px', flex: 1 }}
+                        className="btn-xs btn-primary"
                       >
                         Start All
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onStopAll(project.id); }}
-                        className="danger"
-                        style={{ fontSize: 10, padding: '2px 8px', flex: 1 }}
+                        className="btn-xs btn-danger"
                       >
                         Stop All
                       </button>
                     </div>
                   )}
+
                   {projectAgents.map(agent => (
                     <div
                       key={agent.id}
-                      className={`agent-item ${selectedAgentId === agent.id ? 'active' : ''}`}
+                      className={`sidebar-agent-item ${selectedAgentId === agent.id ? 'active' : ''}`}
                       onClick={() => onSelectAgent(project.id, agent.id)}
                     >
-                      <span className={`status-dot ${agent.status}`} />
-                      <span style={{ flex: 1 }}>{agent.name}</span>
-                      <span style={{ fontSize: 10, opacity: 0.5 }}>{agent.cli}</span>
-                      <span
-                        className="agent-delete-btn"
-                        onClick={(e) => { e.stopPropagation(); onDeleteAgent(agent); }}
-                        title="Delete agent"
-                      >
-                        &times;
-                      </span>
+                      <div className="sidebar-agent-header">
+                        <span className={`status-dot ${agent.status}`} />
+                        <span className="sidebar-agent-name">{agent.name}</span>
+                        <span className="sidebar-agent-cli">{agent.cli}</span>
+                        <span
+                          className="sidebar-agent-delete"
+                          onClick={(e) => { e.stopPropagation(); onDeleteAgent(agent); }}
+                          title="Delete agent"
+                        >
+                          &times;
+                        </span>
+                      </div>
                     </div>
                   ))}
-                  <div className="agent-item" onClick={() => { onSelectProject(project.id); onNewAgent(); }} style={{ opacity: 0.6 }}>
+
+                  <div
+                    className="sidebar-agent-add"
+                    onClick={() => { onSelectProject(project.id); onNewAgent(); }}
+                  >
                     + Add Agent
                   </div>
-                </>
+                </div>
               )}
             </div>
           );
         })}
+
         {projects.length === 0 && (
-          <div style={{ padding: '12px 8px', fontSize: 13, color: 'var(--text-secondary)' }}>
-            No projects yet. Create one to get started.
+          <div className="sidebar-empty">
+            No projects yet
           </div>
         )}
       </div>

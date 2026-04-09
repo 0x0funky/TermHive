@@ -25,6 +25,8 @@ export const deleteProject = (id: string) =>
 // Agents
 export const listAgents = (projectId: string) =>
   request<Agent[]>(`/projects/${projectId}/agents`);
+export const getAgentPreviews = (projectId: string) =>
+  request<Record<string, string>>(`/projects/${projectId}/agents/previews`);
 export const createAgent = (projectId: string, data: { name: string; cli: string; cwd?: string; role?: string; flags?: Agent['flags'] }) =>
   request<Agent>(`/projects/${projectId}/agents`, { method: 'POST', body: JSON.stringify(data) });
 export const deleteAgent = (projectId: string, agentId: string) =>
