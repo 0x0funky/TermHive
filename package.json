@@ -15,6 +15,7 @@
   "dependencies": {
     "chokidar": "^5.0.0",
     "express": "^4.21.0",
+    "marked": "^18.0.0",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
   },

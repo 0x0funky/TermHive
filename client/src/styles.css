@@ -581,14 +581,20 @@ button.danger:hover {
   font-size: 13px;
 }
 
+.memory-rendered th,
 .memory-rendered td {
   padding: 6px 12px;
   border: 1px solid var(--border);
+  text-align: left;
 }
 
-.memory-rendered tr:first-child td {
+.memory-rendered th {
   font-weight: 600;
   background: var(--bg-secondary);
+}
+
+.memory-rendered thead {
+  border-bottom: 2px solid var(--border);
 }
 
 /* Memory log timeline */

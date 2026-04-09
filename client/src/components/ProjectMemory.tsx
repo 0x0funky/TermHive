@@ -1,45 +1,15 @@
 import { useState, useEffect } from 'react';
+import { marked } from 'marked';
 import * as api from '../api';
+
+// Configure marked for clean output
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
 
 interface Props {
   projectId: string;
-}
-
-// Simple markdown to HTML
-function renderMarkdown(md: string): string {
-  let html = md
-    .replace(/```[\s\S]*?```/g, (m) => {
-      const code = m.slice(3, -3).replace(/^\w*\n/, '');
-      return '<pre><code>' + escapeHtml(code) + '</code></pre>';
-    })
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-    .replace(/^\|(.+)\|$/gm, (_, row) => {
-      const cells = row.split('|').map((c: string) => c.trim());
-      return '<tr>' + cells.map((c: string) => '<td>' + c + '</td>').join('') + '</tr>';
-    })
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br/>');
-
-  html = html.replace(/(<li>.*?<\/li>)(\s*<br\/>)*/g, '$1');
-  html = html.replace(/((?:<li>.*?<\/li>)+)/g, '<ul>$1</ul>');
-  html = html.replace(/((?:<tr>.*?<\/tr>\s*)+)/g, '<table>$1</table>');
-  html = html.replace(/<\/blockquote>\s*<br\/?>\s*<blockquote>/g, '<br/>');
-
-  return '<p>' + html + '</p>';
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function timeAgo(timestamp: string): string {
@@ -263,7 +233,7 @@ export default function ProjectMemory({ projectId }: Props) {
             ) : (
               <div
                 className="memory-rendered"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+                dangerouslySetInnerHTML={{ __html: marked(content) as string }}
                 onClick={(e) => {
                   const target = e.target as HTMLElement;
                   if (target.tagName === 'A') {
