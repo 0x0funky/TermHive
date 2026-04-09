@@ -19,13 +19,13 @@ export default function Terminal({ agentId, send, wsRef }: Props) {
 
     const term = new XTerminal({
       cursorBlink: true,
-      fontSize: 13,
-      fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
+      fontSize: 12.25,
+      fontFamily: "'Consolas', 'Fira Code', monospace",
       theme: {
-        background: '#0d1117',
-        foreground: '#e6edf3',
-        cursor: '#58a6ff',
-        selectionBackground: '#264f78',
+        background: '#1e1e1e',
+        foreground: 'rgba(255, 255, 255, 0.6)',
+        cursor: '#529cca',
+        selectionBackground: 'rgba(82, 156, 202, 0.3)',
       },
     });
 

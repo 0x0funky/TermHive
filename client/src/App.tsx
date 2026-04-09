@@ -8,6 +8,7 @@ import ProjectMemory from './components/ProjectMemory';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import { useWebSocket } from './hooks/useWebSocket';
+import logoIcon from './assets/logo.svg';
 import * as api from './api';
 import type { Project, Agent } from './api';
 
@@ -162,45 +163,40 @@ export default function App() {
   return (
     <div className="app">
       <div className="header">
-        <h1>Termhive</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {selectedProject && (
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              {selectedProject.name}
-            </span>
-          )}
+        <h1>
+          <div className="header-breadcrumb">
+            <div className="header-logo">
+              <img src={logoIcon} alt="Termhive" />
+            </div>
+            <span>Termhive</span>
+            {selectedProject && (
+              <>
+                <span className="header-separator">/</span>
+                <span className="header-project-name">{selectedProject.name}</span>
+              </>
+            )}
+          </div>
+        </h1>
+        <div className="header-right">
           {selectedProjectId && mainTab === 'terminals' && (
-            <div className="layout-switcher">
+            <div className="segmented-toggle">
               <button
                 onClick={() => setViewMode('single')}
-                title="Single View"
-                style={{
-                  padding: '3px 8px',
-                  fontSize: 12,
-                  background: viewMode === 'single' ? 'var(--accent)' : 'var(--bg-tertiary)',
-                  color: viewMode === 'single' ? '#000' : 'var(--text-primary)',
-                  border: viewMode === 'single' ? '1px solid var(--accent)' : '1px solid var(--border)',
-                }}
+                className={viewMode === 'single' ? 'active' : ''}
               >
                 Single
               </button>
+              <div className="segmented-toggle-divider" />
               <button
                 onClick={() => setViewMode('split')}
-                title="Split View (tmux-like)"
-                style={{
-                  padding: '3px 8px',
-                  fontSize: 12,
-                  background: viewMode === 'split' ? 'var(--accent)' : 'var(--bg-tertiary)',
-                  color: viewMode === 'split' ? '#000' : 'var(--text-primary)',
-                  border: viewMode === 'split' ? '1px solid var(--accent)' : '1px solid var(--border)',
-                }}
+                className={viewMode === 'split' ? 'active' : ''}
               >
                 Split
               </button>
             </div>
           )}
           {selectedProject && (
-            <button className="danger" onClick={handleDeleteProject} style={{ fontSize: 11 }}>
+            <button className="danger" onClick={handleDeleteProject}>
               Delete Project
             </button>
           )}

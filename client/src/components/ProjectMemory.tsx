@@ -193,22 +193,20 @@ export default function ProjectMemory({ projectId }: Props) {
         {selected ? (
           <>
             <div className="memory-content-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="memory-content-header-left">
                 {selected !== '_index.md' && (
-                  <span
-                    onClick={goToIndex}
-                    style={{ cursor: 'pointer', fontSize: 14, color: 'var(--accent)' }}
-                    title="Back to Index"
-                  >
-                    &larr;
+                  <span onClick={goToIndex} className="memory-back-btn" title="Back to Index">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M8.75 3.5L5.25 7L8.75 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </span>
                 )}
-                <span style={{ fontWeight: 600 }}>{selected}</span>
+                <span style={{ fontWeight: 400, color: 'var(--text-primary)' }}>{selected}</span>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {editing ? (
                   <>
-                    <button onClick={handleSave} className="primary" disabled={saving}>
+                    <button onClick={handleSave} className="memory-edit-btn" disabled={saving}>
                       {saving ? 'Saving...' : 'Save'}
                     </button>
                     <button onClick={() => {
@@ -219,7 +217,12 @@ export default function ProjectMemory({ projectId }: Props) {
                     }}>Cancel</button>
                   </>
                 ) : (
-                  <button onClick={() => setEditing(true)}>Edit</button>
+                  <button onClick={() => setEditing(true)} className="memory-edit-btn">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M10.5 1.75L12.25 3.5M1.75 12.25L2.33 9.92L10.08 2.17C10.31 1.94 10.69 1.94 10.92 2.17L11.83 3.08C12.06 3.31 12.06 3.69 11.83 3.92L4.08 11.67L1.75 12.25Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    Edit
+                  </button>
                 )}
               </div>
             </div>

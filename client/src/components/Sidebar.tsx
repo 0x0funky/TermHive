@@ -23,16 +23,17 @@ interface Props {
   onExpandProject: (projectId: string) => void;
 }
 
-function UsageBar({ label, value }: { label: string; value: number }) {
-  const color = value > 80 ? 'var(--red)' : value > 50 ? 'var(--yellow)' : 'var(--green)';
+function UsageBar({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="sidebar-usage-row">
-      <span className="sidebar-usage-label">{label}</span>
+    <>
+      <div className="sidebar-usage-row">
+        <span className="sidebar-usage-label">{label}</span>
+        <span className="sidebar-usage-pct">{Math.round(value)}%</span>
+      </div>
       <div className="sidebar-usage-bar">
         <div className="sidebar-usage-fill" style={{ width: value + '%', background: color }} />
       </div>
-      <span className="sidebar-usage-pct">{Math.round(value)}%</span>
-    </div>
+    </>
   );
 }
 
@@ -119,14 +120,15 @@ export default function Sidebar({
                   onClick={(e) => { e.stopPropagation(); toggleProject(project.id); }}
                   className="sidebar-expand-btn"
                 >
-                  {isExpanded ? '−' : '+'}
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                    <path d="M5.25 3.5L8.75 7L5.25 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </span>
                 <div className="sidebar-project-info">
                   <span className="sidebar-project-name">{project.name}</span>
                   {projectAgents.length > 0 && (
                     <span className="sidebar-project-stats">
-                      {runningCount > 0 && <span className="stats-running">{runningCount} running</span>}
-                      {runningCount === 0 && <span className="stats-total">{projectAgents.length} agents</span>}
+                      <span className={runningCount > 0 ? 'stats-running' : 'stats-total'}>{projectAgents.length}</span>
                     </span>
                   )}
                 </div>
@@ -138,13 +140,13 @@ export default function Sidebar({
                     <div className="sidebar-agent-actions">
                       <button
                         onClick={(e) => { e.stopPropagation(); onStartAll(project.id); }}
-                        className="btn-xs btn-primary"
+                        className="btn-xs btn-start-all"
                       >
                         Start All
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onStopAll(project.id); }}
-                        className="btn-xs btn-danger"
+                        className="btn-xs btn-stop-all"
                       >
                         Stop All
                       </button>
@@ -196,28 +198,32 @@ export default function Sidebar({
           {usageData.claude && (
             <>
               <div className="sidebar-usage-title">
-                <img src={claudeIcon} alt="Claude" className="sidebar-usage-icon" />
+                <div className="sidebar-usage-icon-wrapper claude">
+                  <img src={claudeIcon} alt="Claude" className="sidebar-usage-icon" />
+                </div>
                 Claude
               </div>
               {usageData.claude.session !== null && (
-                <UsageBar label="Session" value={usageData.claude.session} />
+                <UsageBar label="Session" value={usageData.claude.session} color="var(--accent)" />
               )}
               {usageData.claude.week !== null && (
-                <UsageBar label="Week" value={usageData.claude.week} />
+                <UsageBar label="Week" value={usageData.claude.week} color="var(--accent)" />
               )}
             </>
           )}
           {usageData.codex && (
             <>
-              <div className="sidebar-usage-title" style={usageData.claude ? { marginTop: 8 } : undefined}>
-                <img src={codexIcon} alt="Codex" className="sidebar-usage-icon" />
+              <div className="sidebar-usage-title" style={usageData.claude ? { marginTop: 14 } : undefined}>
+                <div className="sidebar-usage-icon-wrapper codex">
+                  <img src={codexIcon} alt="Codex" className="sidebar-usage-icon" />
+                </div>
                 Codex
               </div>
               {usageData.codex.session !== null && (
-                <UsageBar label="Session" value={usageData.codex.session} />
+                <UsageBar label="Session" value={usageData.codex.session} color="var(--yellow)" />
               )}
               {usageData.codex.week !== null && (
-                <UsageBar label="Week" value={usageData.codex.week} />
+                <UsageBar label="Week" value={usageData.codex.week} color="var(--yellow)" />
               )}
             </>
           )}
