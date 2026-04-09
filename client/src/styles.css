@@ -670,11 +670,22 @@ body {
   box-shadow: none !important;
 }
 
-.terminal-container .xterm-screen,
-.terminal-container .xterm-viewport {
+.terminal-container .xterm-screen {
   width: 100% !important;
   max-width: 100% !important;
   overflow: hidden !important;
+}
+
+.terminal-container .xterm-viewport {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+}
+
+/* Expose scrollbar by shrinking screen canvas to leave room */
+.terminal-container .xterm .xterm-screen {
+  width: calc(100% - 8px) !important;
 }
 
 .terminal-container .xterm-screen canvas {
@@ -683,6 +694,52 @@ body {
 
 .terminal-container .xterm-rows {
   overflow: hidden !important;
+}
+
+/* Terminal scrollbar */
+.terminal-container .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.4);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="light"] .terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(55, 53, 47, 0.18);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="light"] .terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(55, 53, 47, 0.35);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="light"] .terminal-container .xterm-viewport::-webkit-scrollbar-thumb:active {
+  background: rgba(55, 53, 47, 0.5);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 /* ---- Shared Content ---- */
@@ -993,28 +1050,29 @@ button.danger:hover, .btn-danger:hover {
   align-items: center;
   justify-content: center;
   background: transparent;
-  transition: background 0.15s;
+  transition: all 0.15s;
 }
 
-.split-divider-h { width: 8px; cursor: col-resize; }
-.split-divider-v { height: 8px; cursor: row-resize; }
+.split-divider-h { width: 4px; cursor: col-resize; }
+.split-divider-v { height: 4px; cursor: row-resize; }
 
 .split-divider::before {
   content: '';
   position: absolute;
   background: var(--border);
-  border-radius: 2px;
-  transition: background 0.15s;
+  transition: all 0.15s;
 }
 
-.split-divider-h::before { width: 1px; height: 100%; left: 3.5px; }
-.split-divider-v::before { height: 1px; width: 100%; top: 3.5px; }
+.split-divider-h::before { width: 1px; height: 100%; left: 1.5px; }
+.split-divider-v::before { height: 1px; width: 100%; top: 1.5px; }
 
 .split-divider:hover::before { background: var(--accent); }
-.split-divider:hover { background: rgba(82, 156, 202, 0.05); }
+
+.split-divider-h:hover::before { width: 2px; left: 1px; }
+.split-divider-v:hover::before { height: 2px; top: 1px; }
 
 .split-divider-grip {
-  font-size: 10px;
+  font-size: 8px;
   color: var(--text-muted);
   opacity: 0;
   transition: opacity 0.15s;
