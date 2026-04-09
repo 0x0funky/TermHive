@@ -100,7 +100,7 @@ export default function Sidebar({
           >&#x25C0;</span>
           <span className="sidebar-header-title">Projects</span>
         </div>
-        <button className="btn-sm btn-primary" onClick={onNewProject}>+ New</button>
+        <button className="btn-sm btn-new-project" onClick={onNewProject}>+</button>
       </div>
 
       <div className="sidebar-list">

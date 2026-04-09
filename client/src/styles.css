@@ -6,13 +6,15 @@
   box-sizing: border-box;
 }
 
-:root {
+:root,
+[data-theme="dark"] {
   --bg-primary: #191919;
   --bg-secondary: #252525;
   --bg-tertiary: #2f2f2f;
   --bg-terminal: #1e1e1e;
   --bg-hover: rgba(255, 255, 255, 0.05);
   --border: rgba(255, 255, 255, 0.09);
+  --border-activity: #262626;
   --text-primary: rgba(255, 255, 255, 0.9);
   --text-secondary: rgba(255, 255, 255, 0.6);
   --text-muted: rgba(255, 255, 255, 0.4);
@@ -25,10 +27,34 @@
   --red-subtle: rgba(235, 87, 87, 0.15);
   --yellow: #e6c845;
   --yellow-subtle: rgba(230, 200, 69, 0.2);
+  --select-bg: #252525;
   --sidebar-width: 224px;
   --header-height: 49px;
   --radius: 3.25px;
   --radius-sm: 3.5px;
+}
+
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f5;
+  --bg-tertiary: #efedea;
+  --bg-terminal: #1e1e1e;
+  --bg-hover: rgba(55, 53, 47, 0.05);
+  --border: rgba(55, 53, 47, 0.09);
+  --border-activity: rgba(55, 53, 47, 0.06);
+  --text-primary: rgba(55, 53, 47, 0.9);
+  --text-secondary: rgba(55, 53, 47, 0.6);
+  --text-muted: rgba(55, 53, 47, 0.4);
+  --accent: #2383e2;
+  --accent-hover: #1a6bc4;
+  --accent-subtle: rgba(35, 131, 226, 0.1);
+  --green: #4dab9a;
+  --green-subtle: rgba(77, 171, 154, 0.1);
+  --red: #eb5757;
+  --red-subtle: rgba(235, 87, 87, 0.08);
+  --yellow: #c49a1a;
+  --yellow-subtle: rgba(196, 154, 26, 0.1);
+  --select-bg: #f7f7f5;
 }
 
 body {
@@ -111,6 +137,25 @@ body {
   align-items: center;
 }
 
+.theme-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-secondary);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover) !important;
+}
+
 .main {
   display: flex;
   flex: 1;
@@ -183,6 +228,26 @@ body {
   font-size: 12.25px;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.btn-new-project {
+  width: 24.5px;
+  height: 24.5px;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 400;
+  border-radius: var(--radius);
+}
+
+.btn-new-project:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover) !important;
 }
 
 .sidebar-list {
@@ -293,25 +358,25 @@ body {
 }
 
 .btn-start-all {
-  background: var(--bg-primary) !important;
+  background: transparent !important;
   border: 1px solid var(--border) !important;
   color: var(--accent) !important;
   font-weight: 500;
 }
 
 .btn-start-all:hover {
-  background: var(--bg-tertiary) !important;
+  background: var(--bg-hover) !important;
 }
 
 .btn-stop-all {
-  background: var(--bg-primary) !important;
+  background: transparent !important;
   border: 1px solid var(--border) !important;
   color: var(--text-secondary) !important;
   font-weight: 500;
 }
 
 .btn-stop-all:hover {
-  background: var(--bg-tertiary) !important;
+  background: var(--bg-hover) !important;
 }
 
 .sidebar-agent-item {
@@ -830,6 +895,40 @@ button.danger:hover, .btn-danger:hover {
   flex-shrink: 0;
 }
 
+/* ---- Pane Actions ---- */
+.pane-actions {
+  display: flex;
+  gap: 3.5px;
+  align-items: center;
+}
+
+.pane-action-btn {
+  width: 19.25px;
+  height: 19.25px;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.pane-action-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover) !important;
+}
+
+.pane-action-close-default {
+  color: var(--red) !important;
+}
+
+.pane-action-close-default:hover {
+  background: var(--red-subtle) !important;
+}
+
 /* ---- Split Dividers ---- */
 .split-divider {
   flex-shrink: 0;
@@ -917,7 +1016,7 @@ button.danger:hover, .btn-danger:hover {
   gap: 10.5px;
   padding: 10.5px 14px;
   font-size: 12.25px;
-  border-bottom: 1px solid #262626;
+  border-bottom: 1px solid var(--border-activity);
   transition: background 0.1s;
   height: 39.5px;
 }

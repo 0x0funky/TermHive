@@ -64,7 +64,7 @@ function AgentSelector({ agents, selectedId, onSelect }: {
       value={selectedId || ''}
       onChange={e => onSelect(e.target.value || null)}
       style={{
-        background: 'var(--bg-primary)',
+        background: 'var(--select-bg)',
         color: 'var(--text-primary)',
         border: '1px solid var(--border)',
         borderRadius: 4,
@@ -193,17 +193,31 @@ function PaneView({ node, tree, ...props }: CommonProps & { node: SplitNode & { 
             onSelect={(id) => onTreeChange(replaceNode(treeRef.current, node.id, { ...node, agentId: id }))}
           />
         </div>
-        <div style={{ display: 'flex', gap: 3 }}>
+        <div className="pane-actions">
           {agent && agent.status === 'stopped' && (
-            <button onClick={() => onStartAgent(agent)} className="primary" style={{ fontSize: 10, padding: '1px 6px' }}>Start</button>
+            <button onClick={() => onStartAgent(agent)} className="btn-start" style={{ fontSize: 10, padding: '2px 8px' }}>Start</button>
           )}
           {agent && agent.status === 'running' && (
-            <button onClick={() => onStopAgent(agent)} style={{ fontSize: 10, padding: '1px 6px' }}>Stop</button>
+            <button onClick={() => onStopAgent(agent)} className="btn-stop" style={{ fontSize: 10, padding: '2px 8px' }}>Stop</button>
           )}
-          <button onClick={splitH} title="Split Horizontal" style={{ fontSize: 10, padding: '1px 6px' }}>|</button>
-          <button onClick={splitV} title="Split Vertical" style={{ fontSize: 10, padding: '1px 6px' }}>&mdash;</button>
+          <button onClick={splitH} title="Split Horizontal" className="pane-action-btn">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <button onClick={splitV} title="Split Vertical" className="pane-action-btn">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <line x1="1.5" y1="6" x2="10.5" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <path d="M6 2.5L4.5 4.5H7.5L6 2.5Z" fill="currentColor"/>
+              <path d="M6 9.5L4.5 7.5H7.5L6 9.5Z" fill="currentColor"/>
+            </svg>
+          </button>
           {canClose && (
-            <button onClick={close} title="Close Pane" className="danger" style={{ fontSize: 10, padding: '1px 6px' }}>&times;</button>
+            <button onClick={close} title="Close Pane" className="pane-action-btn pane-action-close-default">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            </button>
           )}
         </div>
       </div>

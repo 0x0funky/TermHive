@@ -21,6 +21,14 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>('terminals');
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('termhive:theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('termhive:theme', theme);
+  }, [theme]);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewAgent, setShowNewAgent] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -200,6 +208,22 @@ export default function App() {
               Delete Project
             </button>
           )}
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="theme-toggle"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="3" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M7 1.5V2.5M7 11.5V12.5M1.5 7H2.5M11.5 7H12.5M3.1 3.1L3.8 3.8M10.2 10.2L10.9 10.9M3.1 10.9L3.8 10.2M10.2 3.8L10.9 3.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M12 8.5A5.5 5.5 0 115.5 2 4 4 0 0012 8.5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
         </div>
       </div>
 
