@@ -24,11 +24,23 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('termhive:theme') as 'dark' | 'light') || 'dark';
   });
+  const [showThemeHint, setShowThemeHint] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('termhive:theme', theme);
   }, [theme]);
+
+  const handleThemeToggle = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    if (newTheme === 'light') {
+      setShowThemeHint(true);
+      setTimeout(() => setShowThemeHint(false), 8000);
+    } else {
+      setShowThemeHint(false);
+    }
+  };
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewAgent, setShowNewAgent] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -209,7 +221,7 @@ export default function App() {
             </button>
           )}
           <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={handleThemeToggle}
             className="theme-toggle"
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
@@ -225,6 +237,12 @@ export default function App() {
             )}
           </button>
         </div>
+        {showThemeHint && (
+          <div className="theme-hint">
+            <span>For best results, type <code>/theme</code> in Claude Code and select <strong>Light mode</strong></span>
+            <button onClick={() => setShowThemeHint(false)} className="theme-hint-close">&times;</button>
+          </div>
+        )}
       </div>
 
       <div className="main">

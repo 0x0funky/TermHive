@@ -156,6 +156,62 @@ body {
   background: var(--bg-hover) !important;
 }
 
+.theme-hint {
+  position: absolute;
+  top: var(--header-height);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  animation: slideDown 0.2s ease;
+}
+
+.theme-hint code {
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.theme-hint strong {
+  color: var(--text-primary);
+}
+
+.theme-hint-close {
+  width: 18px;
+  height: 18px;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.theme-hint-close:hover {
+  color: var(--text-primary);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .main {
   display: flex;
   flex: 1;
@@ -599,7 +655,6 @@ body {
   min-height: 0;
   max-width: 100%;
   width: 100%;
-  background: var(--bg-terminal);
 }
 
 .terminal-container .xterm {
