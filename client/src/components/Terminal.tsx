@@ -39,6 +39,13 @@ export default function Terminal({ agentId, send, wsRef }: Props) {
 
     // IME positioning is handled by xterm/Claude Code natively
 
+    // Scroll to bottom after buffer finishes streaming
+    let scrollTimer: ReturnType<typeof setTimeout>;
+    const scheduleScroll = () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => term.scrollToBottom(), 150);
+    };
+
     // Attach to agent terminal
     send({ type: 'terminal:attach', agentId });
 
@@ -61,6 +68,7 @@ export default function Terminal({ agentId, send, wsRef }: Props) {
         const msg = JSON.parse(event.data);
         if (msg.type === 'terminal:output' && msg.agentId === agentId) {
           term.write(msg.data);
+          scheduleScroll();
         }
       } catch { /* ignore */ }
     };
@@ -78,6 +86,7 @@ export default function Terminal({ agentId, send, wsRef }: Props) {
 
     return () => {
       clearTimeout(fitTimeout);
+      clearTimeout(scrollTimer);
       send({ type: 'terminal:detach', agentId });
       ws?.removeEventListener('message', handler);
       resizeObserver.disconnect();
