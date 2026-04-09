@@ -1,5 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Project, Agent } from '../api';
+import claudeIcon from '../assets/claude.svg';
+import codexIcon from '../assets/codex.svg';
+
+const cliIcons: Record<string, string> = {
+  claude: claudeIcon,
+  codex: codexIcon,
+};
 
 interface Props {
   projects: Project[];
@@ -16,6 +23,19 @@ interface Props {
   onExpandProject: (projectId: string) => void;
 }
 
+function UsageBar({ label, value }: { label: string; value: number }) {
+  const color = value > 80 ? 'var(--red)' : value > 50 ? 'var(--yellow)' : 'var(--green)';
+  return (
+    <div className="sidebar-usage-row">
+      <span className="sidebar-usage-label">{label}</span>
+      <div className="sidebar-usage-bar">
+        <div className="sidebar-usage-fill" style={{ width: value + '%', background: color }} />
+      </div>
+      <span className="sidebar-usage-pct">{Math.round(value)}%</span>
+    </div>
+  );
+}
+
 export default function Sidebar({
   projects, agents, selectedProjectId, selectedAgentId,
   onSelectProject, onSelectAgent, onNewProject, onNewAgent,
@@ -23,6 +43,24 @@ export default function Sidebar({
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [usageData, setUsageData] = useState<{
+    claude: { session: number | null; week: number | null } | null;
+    codex: { session: number | null; week: number | null } | null;
+  }>({ claude: null, codex: null });
+
+  useEffect(() => {
+    const fetchUsage = () => {
+      fetch('/api/usage').then(r => r.json()).then(data => {
+        setUsageData({
+          claude: data.claude ? { session: data.claude.session?.utilization ?? null, week: data.claude.week?.utilization ?? null } : null,
+          codex: data.codex ? { session: data.codex.session?.utilization ?? null, week: data.codex.week?.utilization ?? null } : null,
+        });
+      }).catch(() => {});
+    };
+    fetchUsage();
+    const interval = setInterval(fetchUsage, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const toggleProject = (id: string) => {
     setExpandedProjects(prev => {
@@ -152,6 +190,39 @@ export default function Sidebar({
           </div>
         )}
       </div>
+
+      {(usageData.claude || usageData.codex) && (
+        <div className="sidebar-usage">
+          {usageData.claude && (
+            <>
+              <div className="sidebar-usage-title">
+                <img src={claudeIcon} alt="Claude" className="sidebar-usage-icon" />
+                Claude
+              </div>
+              {usageData.claude.session !== null && (
+                <UsageBar label="Session" value={usageData.claude.session} />
+              )}
+              {usageData.claude.week !== null && (
+                <UsageBar label="Week" value={usageData.claude.week} />
+              )}
+            </>
+          )}
+          {usageData.codex && (
+            <>
+              <div className="sidebar-usage-title" style={usageData.claude ? { marginTop: 8 } : undefined}>
+                <img src={codexIcon} alt="Codex" className="sidebar-usage-icon" />
+                Codex
+              </div>
+              {usageData.codex.session !== null && (
+                <UsageBar label="Session" value={usageData.codex.session} />
+              )}
+              {usageData.codex.week !== null && (
+                <UsageBar label="Week" value={usageData.codex.week} />
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

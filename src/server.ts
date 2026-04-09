@@ -7,6 +7,7 @@ import { createRouter } from './routes.js';
 import * as storage from './storage.js';
 import * as ptyManager from './pty-manager.js';
 import * as activity from './activity.js';
+import * as usage from './usage.js';
 import type { WSClientMessage, WSServerMessage, ActivityEvent } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,15 @@ app.get('/api/activity', (req, res) => {
   const projectId = req.query.projectId as string | undefined;
   res.json(activity.getEvents(projectId));
 });
+
+// Usage endpoint
+app.get('/api/usage', async (_req, res) => {
+  const data = await usage.getUsage();
+  res.json(data);
+});
+
+// Start usage polling
+usage.startPolling();
 
 // Serve static frontend in production
 const clientDist = path.join(__dirname, 'client');
