@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { Agent } from './types.js';
-import { updateAgent, getProjectData, SHARED_CONTENT_DIR } from './storage.js';
+import { updateAgent, getProjectData, SHARED_CONTENT_DIR, MEMORY_DIR } from './storage.js';
 
 // Dynamic import for node-pty (optional dependency)
 let pty: typeof import('node-pty') | null = null;
@@ -55,49 +55,76 @@ function ensureSharedDir(projectName: string): string {
 }
 
 /**
- * Create/update CLAUDE.md in agent's cwd with shared content instructions.
- * Appends a section if CLAUDE.md exists, creates it if not.
+ * Build the Termhive instruction section content.
  */
-function ensureClaudeMd(agentCwd: string, projectName: string, sharedPath: string) {
-  const claudeMdPath = path.join(agentCwd, 'CLAUDE.md');
-  const marker = '<!-- Termhive Shared Content -->';
-  const section = [
+function buildTermhiveSection(sharedPath: string, memoryPath: string): { marker: string; section: string } {
+  const marker = '<!-- Termhive -->';
+  const hasMemory = fs.existsSync(path.join(memoryPath, '_schema.md'));
+
+  const lines = [
     '',
     marker,
-    '## Shared Content (Termhive)',
+    '## Termhive — Multi-Agent Collaboration',
     '',
-    `This project uses Termhive for multi-agent collaboration.`,
-    `Shared content directory: \`${sharedPath}\``,
+    'Shared content directory: `' + sharedPath + '`',
+    '- Read/write files here to share information with other agents and the user',
     '',
-    '- Read files from the shared content directory for cross-agent context',
-    '- Write files there to share information with other agents and the user',
-    '- The user can view and edit these files from the Termhive web UI',
-    `<!-- End Termhive -->`,
-    '',
-  ].join('\n');
+  ];
 
-  if (fs.existsSync(claudeMdPath)) {
-    const existing = fs.readFileSync(claudeMdPath, 'utf-8');
-    if (existing.includes(marker)) return; // already has our section
-    fs.appendFileSync(claudeMdPath, section, 'utf-8');
+  if (hasMemory) {
+    lines.push(
+      'Project memory directory: `' + memoryPath + '`',
+      '- Read `_index.md` first to understand the project',
+      '- Read `_schema.md` for memory maintenance conventions',
+      '- When asked to "update memory", follow the schema rules',
+      '- Do NOT auto-update memory while coding — only when explicitly asked',
+      '',
+    );
+  }
+
+  lines.push('<!-- End Termhive -->', '');
+  return { marker, section: lines.join('\n') };
+}
+
+/**
+ * Write Termhive instructions to a markdown file (CLAUDE.md or AGENTS.md).
+ */
+function ensureInstructionFile(filePath: string, projectName: string, sharedPath: string, memoryPath: string) {
+  const { marker, section } = buildTermhiveSection(sharedPath, memoryPath);
+
+  if (fs.existsSync(filePath)) {
+    const existing = fs.readFileSync(filePath, 'utf-8');
+    if (existing.includes(marker)) {
+      const updated = existing.replace(
+        /<!-- Termhive -->[\s\S]*?<!-- End Termhive -->/,
+        marker + section.split(marker)[1]
+      );
+      fs.writeFileSync(filePath, updated, 'utf-8');
+    } else {
+      fs.appendFileSync(filePath, section, 'utf-8');
+    }
   } else {
-    fs.writeFileSync(claudeMdPath, `# ${projectName}\n${section}`, 'utf-8');
+    fs.writeFileSync(filePath, '# ' + projectName + '\n' + section, 'utf-8');
   }
 }
 
-function getCliCommand(agent: Agent, sharedPath: string): { cmd: string; args: string[] } {
+function getCliCommand(agent: Agent, sharedPath: string, memoryPath: string): { cmd: string; args: string[] } {
   const args: string[] = [];
+  const hasMemory = fs.existsSync(path.join(memoryPath, '_schema.md'));
   switch (agent.cli) {
     case 'claude':
       if (agent.flags?.dangerouslySkipPermissions) args.push('--dangerously-skip-permissions');
       if (agent.flags?.remoteControl) args.push('--remote-control');
       args.push('--add-dir', sharedPath);
+      if (hasMemory) args.push('--add-dir', memoryPath);
       return { cmd: 'claude', args };
     case 'codex':
       args.push('--add-dir', sharedPath);
+      if (hasMemory) args.push('--add-dir', memoryPath);
       return { cmd: 'codex', args };
     case 'gemini':
       args.push('--include-directories', sharedPath);
+      if (hasMemory) args.push('--include-directories', memoryPath);
       return { cmd: 'gemini', args };
   }
 }
@@ -114,13 +141,18 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
 
   const projectName = projectData.project.name;
   const sharedPath = ensureSharedDir(projectName);
+  const memoryPath = path.join(MEMORY_DIR, projectName);
 
-  // Create CLAUDE.md in agent's cwd with shared content instructions
-  if (agent.cli === 'claude') {
-    ensureClaudeMd(agent.cwd, projectName, sharedPath);
-  }
+  // Write instruction file in agent's cwd so the CLI knows about shared content + memory
+  const instructionFiles: Record<string, string> = {
+    claude: 'CLAUDE.md',
+    codex: 'AGENTS.md',
+    gemini: 'AGENTS.md',
+  };
+  const instrFile = path.join(agent.cwd, instructionFiles[agent.cli]);
+  ensureInstructionFile(instrFile, projectName, sharedPath, memoryPath);
 
-  const { cmd, args } = getCliCommand(agent, sharedPath);
+  const { cmd, args } = getCliCommand(agent, sharedPath, memoryPath);
   const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
 
   let proc: IPty;

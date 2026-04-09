@@ -143,5 +143,33 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     res.status(204).end();
   });
 
+  // --- Project Memory ---
+  router.get('/projects/:id/memory/status', (req: Request, res: Response) => {
+    res.json({ initialized: storage.isMemoryInitialized(req.params.id) });
+  });
+
+  router.post('/projects/:id/memory/initialize', (req: Request, res: Response) => {
+    const ok = storage.initializeMemory(req.params.id);
+    if (!ok) { res.status(404).json({ error: 'Project not found' }); return; }
+    res.json({ initialized: true });
+  });
+
+  router.get('/projects/:id/memory', (req: Request, res: Response) => {
+    res.json(storage.listMemoryFiles(req.params.id));
+  });
+
+  router.get('/projects/:id/memory/:filename(*)', (req: Request, res: Response) => {
+    const item = storage.getMemoryFile(req.params.id, req.params.filename);
+    if (!item) { res.status(404).json({ error: 'File not found' }); return; }
+    res.json(item);
+  });
+
+  router.put('/projects/:id/memory/:filename(*)', (req: Request, res: Response) => {
+    const { content } = req.body;
+    const item = storage.updateMemoryFile(req.params.id, req.params.filename, content || '');
+    if (!item) { res.status(404).json({ error: 'File not found' }); return; }
+    res.json(item);
+  });
+
   return router;
 }

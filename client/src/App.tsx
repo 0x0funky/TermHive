@@ -4,13 +4,14 @@ import Terminal from './components/Terminal';
 import SplitLayout, { type SplitNode, createPane } from './components/SplitLayout';
 import SharedContentView from './components/SharedContent';
 import ActivityFeed from './components/ActivityFeed';
+import ProjectMemory from './components/ProjectMemory';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import { useWebSocket } from './hooks/useWebSocket';
 import * as api from './api';
 import type { Project, Agent } from './api';
 
-type MainTab = 'terminals' | 'content' | 'activity';
+type MainTab = 'terminals' | 'content' | 'memory' | 'activity';
 type ViewMode = 'single' | 'split';
 
 export default function App() {
@@ -21,9 +22,31 @@ export default function App() {
   const [mainTab, setMainTab] = useState<MainTab>('terminals');
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewAgent, setShowNewAgent] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('single');
-  const [splitTrees, setSplitTrees] = useState<Map<string, SplitNode>>(new Map());
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    return (localStorage.getItem('termhive:viewMode') as ViewMode) || 'single';
+  });
+  const [splitTrees, setSplitTrees] = useState<Map<string, SplitNode>>(() => {
+    try {
+      const saved = localStorage.getItem('termhive:splitTrees');
+      if (saved) {
+        const obj = JSON.parse(saved);
+        return new Map(Object.entries(obj));
+      }
+    } catch { /* ignore */ }
+    return new Map();
+  });
   const [contentRefresh, setContentRefresh] = useState(0);
+
+  // Persist split layouts and view mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('termhive:viewMode', viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    const obj: Record<string, SplitNode> = {};
+    for (const [k, v] of splitTrees) { obj[k] = v; }
+    localStorage.setItem('termhive:splitTrees', JSON.stringify(obj));
+  }, [splitTrees]);
 
   const { send, wsRef } = useWebSocket((msg) => {
     // Auto-refresh shared content when files change
@@ -217,6 +240,12 @@ export default function App() {
                   Shared Content
                 </div>
                 <div
+                  className={`tab ${mainTab === 'memory' ? 'active' : ''}`}
+                  onClick={() => setMainTab('memory')}
+                >
+                  Memory
+                </div>
+                <div
                   className={`tab ${mainTab === 'activity' ? 'active' : ''}`}
                   onClick={() => setMainTab('activity')}
                 >
@@ -288,6 +317,8 @@ export default function App() {
                   )
                 ) : mainTab === 'content' ? (
                   <SharedContentView projectId={selectedProjectId} refreshTrigger={contentRefresh} />
+                ) : mainTab === 'memory' ? (
+                  <ProjectMemory projectId={selectedProjectId} />
                 ) : (
                   <ActivityFeed projectId={selectedProjectId} wsRef={wsRef} />
                 )}

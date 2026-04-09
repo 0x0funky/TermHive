@@ -19,9 +19,14 @@ function projectFile(projectId: string) {
 }
 
 const SHARED_CONTENT_DIR = path.join(BASE_DIR, 'shared_content');
+const MEMORY_DIR = path.join(BASE_DIR, 'memory');
 
 function sharedDir(projectName: string) {
   return path.join(SHARED_CONTENT_DIR, projectName);
+}
+
+function memoryDir(projectName: string) {
+  return path.join(MEMORY_DIR, projectName);
 }
 
 // Initialize storage
@@ -215,4 +220,298 @@ export function deleteContent(projectId: string, filename: string): boolean {
   return true;
 }
 
-export { SHARED_CONTENT_DIR };
+// --- Project Memory (stored in ~/.termhive/memory/[project_name]/) ---
+
+const MEMORY_SCHEMA = `# Project Memory Schema
+
+## Purpose
+This is the project's persistent knowledge base, maintained by AI agents via Termhive.
+It accumulates and organizes knowledge over time — architecture decisions, API specs,
+progress tracking, and cross-referenced documentation.
+
+## Structure
+
+### Core Pages
+- **overview.md** — Project purpose, tech stack, current state. The "executive summary" — always keep under 200 lines.
+- **architecture.md** — System design, components, data flow, infrastructure.
+- **api-endpoints.md** — All API endpoints with request/response formats.
+- **data-model.md** — Database schema, models, relationships.
+- **decisions.md** — Architecture and design decisions with rationale. Append-only — never delete entries.
+- **progress.md** — What's done, what's in progress, what's blocked.
+
+### Agent Logs
+- **agents/[agent-name].md** — Per-agent work log: what this agent has accomplished, current focus, blockers.
+
+### Raw Sources (optional)
+- **raw/** — Original documents, specs, or references. Immutable — agents read but never modify these.
+
+## Maintenance Rules
+
+When asked to "update memory" or "write to memory":
+
+1. Read \`_index.md\` first to find relevant existing pages
+2. Update ALL affected pages, not just one. A single change might touch 3-5 pages.
+3. Add \`[[cross-references]]\` to related pages using markdown links
+4. Always append an entry to \`_log.md\` with format: \`## [YYYY-MM-DD] action | Summary\`
+5. Update \`_index.md\` if you created or deleted pages
+6. Never delete content from \`decisions.md\` — only append
+7. When new information contradicts existing content, note the contradiction and update
+
+## Operations
+
+### Ingest
+When processing new information: read it, extract key points, update relevant pages,
+add cross-references, update index, append to log.
+
+### Query
+When answering questions about the project: read \`_index.md\` first, then drill into
+relevant pages. Cite which pages you referenced.
+
+### Lint
+Periodically check for: contradictions between pages, stale information, orphan pages
+with no inbound links, important concepts missing their own page, gaps that need filling.
+`;
+
+const MEMORY_INDEX = `# Project Memory Index
+
+> Auto-maintained by AI agents. See \`_schema.md\` for conventions.
+
+## Core
+- [Overview](overview.md) — Project purpose, tech stack, current state
+- [Architecture](architecture.md) — System design and components
+- [API Endpoints](api-endpoints.md) — REST/GraphQL endpoint reference
+- [Data Model](data-model.md) — Database schema and relationships
+- [Decisions](decisions.md) — Architecture decision records
+- [Progress](progress.md) — Current status and roadmap
+
+## Agents
+<!-- Agent pages will be listed here as they are created -->
+`;
+
+const MEMORY_LOG = `# Project Memory Log
+
+> Chronological record of memory updates. Append-only.
+> Format: ## [YYYY-MM-DD] action | Summary
+
+`;
+
+const MEMORY_OVERVIEW = `# Project Overview
+
+> This page should be the first thing a new agent reads to understand the project.
+> Keep it under 200 lines. Update it as the project evolves.
+
+## Purpose
+<!-- What does this project do? Who is it for? -->
+
+## Tech Stack
+<!-- Languages, frameworks, databases, infrastructure -->
+
+## Current State
+<!-- What's working? What's in progress? What's the immediate priority? -->
+
+## Key Links
+<!-- Repository, deployment, documentation, etc. -->
+`;
+
+export function isMemoryInitialized(projectId: string): boolean {
+  const data = getProjectData(projectId);
+  if (!data) return false;
+  const dir = memoryDir(data.project.name);
+  return fs.existsSync(path.join(dir, '_schema.md'));
+}
+
+export function initializeMemory(projectId: string): boolean {
+  const data = getProjectData(projectId);
+  if (!data) return false;
+  const dir = memoryDir(data.project.name);
+  ensureDir(dir);
+  ensureDir(path.join(dir, 'agents'));
+  ensureDir(path.join(dir, 'raw'));
+
+  const files: Record<string, string> = {
+    '_schema.md': MEMORY_SCHEMA,
+    '_index.md': MEMORY_INDEX,
+    '_log.md': MEMORY_LOG,
+    'overview.md': MEMORY_OVERVIEW,
+    'architecture.md': [
+      '# Architecture',
+      '',
+      '## System Overview',
+      '<!-- High-level description: what are the main components and how do they interact? -->',
+      '',
+      '## Component Diagram',
+      '```',
+      '┌──────────┐     ┌──────────┐     ┌──────────┐',
+      '│ Frontend  │────>│ Backend  │────>│ Database │',
+      '└──────────┘     └──────────┘     └──────────┘',
+      '```',
+      '<!-- Replace with your actual architecture -->',
+      '',
+      '## Components',
+      '',
+      '### Frontend',
+      '<!-- Framework, structure, key patterns -->',
+      '',
+      '### Backend',
+      '<!-- Framework, API layer, business logic -->',
+      '',
+      '### Database',
+      '<!-- Type, schema overview, key tables -->',
+      '',
+      '## Data Flow',
+      '<!-- How does data flow through the system? Key request paths? -->',
+      '',
+      '## Infrastructure',
+      '<!-- Hosting, CI/CD, environment setup -->',
+      '',
+    ].join('\n'),
+    'api-endpoints.md': [
+      '# API Endpoints',
+      '',
+      '## Base URL',
+      '<!-- e.g. http://localhost:3000/api -->',
+      '',
+      '## Endpoints',
+      '',
+      '| Method | Path | Description | Auth |',
+      '|--------|------|-------------|------|',
+      '| GET | /example | Description | No |',
+      '| POST | /example | Description | Yes |',
+      '',
+      '## Authentication',
+      '<!-- How does auth work? Token format? -->',
+      '',
+      '## Error Format',
+      '<!-- Standard error response structure -->',
+      '',
+    ].join('\n'),
+    'data-model.md': [
+      '# Data Model',
+      '',
+      '## Entity Relationship',
+      '<!-- Key entities and their relationships -->',
+      '',
+      '## Models',
+      '',
+      '### Example Model',
+      '| Field | Type | Description |',
+      '|-------|------|-------------|',
+      '| id | string | Primary key |',
+      '| created_at | datetime | Creation timestamp |',
+      '',
+      '## Migrations',
+      '<!-- Notable migration history -->',
+      '',
+    ].join('\n'),
+    'decisions.md': [
+      '# Architecture Decisions',
+      '',
+      '> Append-only — never delete entries. New decisions go at the bottom.',
+      '',
+      '<!-- Template for new entries:',
+      '## [YYYY-MM-DD] Decision Title',
+      '**Context:** Why did this come up?',
+      '**Decision:** What did we choose?',
+      '**Alternatives considered:** What else was on the table?',
+      '**Rationale:** Why this over the alternatives?',
+      '-->',
+      '',
+    ].join('\n'),
+    'progress.md': [
+      '# Progress',
+      '',
+      '> Updated by agents when tasks are completed or started.',
+      '> Move items between sections as status changes.',
+      '',
+      '## Done',
+      '<!-- - [YYYY-MM-DD] What was completed -->',
+      '',
+      '## In Progress',
+      '<!-- - What is currently being worked on (and by which agent) -->',
+      '',
+      '## Blocked',
+      '<!-- - What is stuck and why -->',
+      '',
+      '## Upcoming',
+      '<!-- - What needs to be done next -->',
+      '',
+    ].join('\n'),
+  };
+
+  for (const [filename, content] of Object.entries(files)) {
+    const filePath = path.join(dir, filename);
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, content, 'utf-8');
+    }
+  }
+  return true;
+}
+
+export function listMemoryFiles(projectId: string): SharedContent[] {
+  const data = getProjectData(projectId);
+  if (!data) return [];
+  const dir = memoryDir(data.project.name);
+  if (!fs.existsSync(dir)) return [];
+
+  const results: SharedContent[] = [];
+  const readDir = (d: string, prefix: string) => {
+    const entries = fs.readdirSync(d, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) {
+        const sub = prefix ? prefix + '/' + entry.name : entry.name;
+        readDir(path.join(d, entry.name), sub);
+      } else {
+        const filePath = path.join(d, entry.name);
+        const filename = prefix ? prefix + '/' + entry.name : entry.name;
+        const stat = fs.statSync(filePath);
+        results.push({
+          id: filename,
+          projectId,
+          filename,
+          content: '',
+          createdBy: 'system',
+          updatedAt: stat.mtime.toISOString(),
+        });
+      }
+    }
+  };
+  readDir(dir, '');
+  return results;
+}
+
+export function getMemoryFile(projectId: string, filename: string): SharedContent | null {
+  const data = getProjectData(projectId);
+  if (!data) return null;
+  const filePath = path.join(memoryDir(data.project.name), filename);
+  if (!fs.existsSync(filePath)) return null;
+  const stat = fs.statSync(filePath);
+  return {
+    id: filename,
+    projectId,
+    filename,
+    content: fs.readFileSync(filePath, 'utf-8'),
+    createdBy: 'system',
+    updatedAt: stat.mtime.toISOString(),
+  };
+}
+
+export function updateMemoryFile(projectId: string, filename: string, content: string): SharedContent | null {
+  const data = getProjectData(projectId);
+  if (!data) return null;
+  const filePath = path.join(memoryDir(data.project.name), filename);
+  const dir = path.dirname(filePath);
+  ensureDir(dir);
+  fs.writeFileSync(filePath, content, 'utf-8');
+  const stat = fs.statSync(filePath);
+  return {
+    id: filename,
+    projectId,
+    filename,
+    content,
+    createdBy: 'user',
+    updatedAt: stat.mtime.toISOString(),
+  };
+}
+
+export { SHARED_CONTENT_DIR, MEMORY_DIR };
