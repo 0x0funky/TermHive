@@ -19,14 +19,14 @@ function projectFile(projectId: string) {
 }
 
 const SHARED_CONTENT_DIR = path.join(BASE_DIR, 'shared_content');
-const MEMORY_DIR = path.join(BASE_DIR, 'memory');
+const WIKI_DIR = path.join(BASE_DIR, 'wiki');
 
 function sharedDir(projectName: string) {
   return path.join(SHARED_CONTENT_DIR, projectName);
 }
 
-function memoryDir(projectName: string) {
-  return path.join(MEMORY_DIR, projectName);
+function wikiDir(projectName: string) {
+  return path.join(WIKI_DIR, projectName);
 }
 
 // Initialize storage
@@ -220,9 +220,9 @@ export function deleteContent(projectId: string, filename: string): boolean {
   return true;
 }
 
-// --- Project Memory (stored in ~/.termhive/memory/[project_name]/) ---
+// --- Project Wiki (stored in ~/.termhive/memory/[project_name]/) ---
 
-const MEMORY_SCHEMA = `# Project Memory Schema
+const WIKI_SCHEMA = `# Project Wiki Schema
 
 ## Purpose
 This is the project's persistent knowledge base, maintained by AI agents via Termhive.
@@ -247,7 +247,7 @@ progress tracking, and cross-referenced documentation.
 
 ## Maintenance Rules
 
-When asked to "update memory" or "write to memory":
+When asked to "update wiki" or "write to wiki":
 
 1. Read \`_index.md\` first to find relevant existing pages
 2. Update ALL affected pages, not just one. A single change might touch 3-5 pages.
@@ -272,7 +272,7 @@ Periodically check for: contradictions between pages, stale information, orphan 
 with no inbound links, important concepts missing their own page, gaps that need filling.
 `;
 
-const MEMORY_INDEX = `# Project Memory Index
+const WIKI_INDEX = `# Project Wiki Index
 
 > Auto-maintained by AI agents. See \`_schema.md\` for conventions.
 
@@ -288,14 +288,14 @@ const MEMORY_INDEX = `# Project Memory Index
 <!-- Agent pages will be listed here as they are created -->
 `;
 
-const MEMORY_LOG = `# Project Memory Log
+const WIKI_LOG = `# Project Wiki Log
 
-> Chronological record of memory updates. Append-only.
+> Chronological record of wiki updates. Append-only.
 > Format: ## [YYYY-MM-DD] action | Summary
 
 `;
 
-const MEMORY_OVERVIEW = `# Project Overview
+const WIKI_OVERVIEW = `# Project Overview
 
 > This page should be the first thing a new agent reads to understand the project.
 > Keep it under 200 lines. Update it as the project evolves.
@@ -313,26 +313,26 @@ const MEMORY_OVERVIEW = `# Project Overview
 <!-- Repository, deployment, documentation, etc. -->
 `;
 
-export function isMemoryInitialized(projectId: string): boolean {
+export function isWikiInitialized(projectId: string): boolean {
   const data = getProjectData(projectId);
   if (!data) return false;
-  const dir = memoryDir(data.project.name);
+  const dir = wikiDir(data.project.name);
   return fs.existsSync(path.join(dir, '_schema.md'));
 }
 
-export function initializeMemory(projectId: string): boolean {
+export function initializeWiki(projectId: string): boolean {
   const data = getProjectData(projectId);
   if (!data) return false;
-  const dir = memoryDir(data.project.name);
+  const dir = wikiDir(data.project.name);
   ensureDir(dir);
   ensureDir(path.join(dir, 'agents'));
   ensureDir(path.join(dir, 'raw'));
 
   const files: Record<string, string> = {
-    '_schema.md': MEMORY_SCHEMA,
-    '_index.md': MEMORY_INDEX,
-    '_log.md': MEMORY_LOG,
-    'overview.md': MEMORY_OVERVIEW,
+    '_schema.md': WIKI_SCHEMA,
+    '_index.md': WIKI_INDEX,
+    '_log.md': WIKI_LOG,
+    'overview.md': WIKI_OVERVIEW,
     'architecture.md': [
       '# Architecture',
       '',
@@ -447,10 +447,10 @@ export function initializeMemory(projectId: string): boolean {
   return true;
 }
 
-export function listMemoryFiles(projectId: string): SharedContent[] {
+export function listWikiFiles(projectId: string): SharedContent[] {
   const data = getProjectData(projectId);
   if (!data) return [];
-  const dir = memoryDir(data.project.name);
+  const dir = wikiDir(data.project.name);
   if (!fs.existsSync(dir)) return [];
 
   const results: SharedContent[] = [];
@@ -480,10 +480,10 @@ export function listMemoryFiles(projectId: string): SharedContent[] {
   return results;
 }
 
-export function getMemoryFile(projectId: string, filename: string): SharedContent | null {
+export function getWikiFile(projectId: string, filename: string): SharedContent | null {
   const data = getProjectData(projectId);
   if (!data) return null;
-  const filePath = path.join(memoryDir(data.project.name), filename);
+  const filePath = path.join(wikiDir(data.project.name), filename);
   if (!fs.existsSync(filePath)) return null;
   const stat = fs.statSync(filePath);
   return {
@@ -496,10 +496,10 @@ export function getMemoryFile(projectId: string, filename: string): SharedConten
   };
 }
 
-export function updateMemoryFile(projectId: string, filename: string, content: string): SharedContent | null {
+export function updateWikiFile(projectId: string, filename: string, content: string): SharedContent | null {
   const data = getProjectData(projectId);
   if (!data) return null;
-  const filePath = path.join(memoryDir(data.project.name), filename);
+  const filePath = path.join(wikiDir(data.project.name), filename);
   const dir = path.dirname(filePath);
   ensureDir(dir);
   fs.writeFileSync(filePath, content, 'utf-8');
@@ -514,4 +514,4 @@ export function updateMemoryFile(projectId: string, filename: string, content: s
   };
 }
 
-export { SHARED_CONTENT_DIR, MEMORY_DIR };
+export { SHARED_CONTENT_DIR, WIKI_DIR };

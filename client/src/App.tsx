@@ -4,7 +4,7 @@ import Terminal from './components/Terminal';
 import SplitLayout, { type SplitNode, createPane } from './components/SplitLayout';
 import SharedContentView from './components/SharedContent';
 import ActivityFeed from './components/ActivityFeed';
-import ProjectMemory from './components/ProjectMemory';
+import ProjectWiki from './components/ProjectWiki';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -12,7 +12,7 @@ import logoIcon from './assets/logo.svg';
 import * as api from './api';
 import type { Project, Agent } from './api';
 
-type MainTab = 'terminals' | 'content' | 'memory' | 'activity';
+type MainTab = 'terminals' | 'content' | 'wiki' | 'activity';
 type ViewMode = 'single' | 'split';
 
 export default function App() {
@@ -278,10 +278,10 @@ export default function App() {
                   Shared Content
                 </div>
                 <div
-                  className={`tab ${mainTab === 'memory' ? 'active' : ''}`}
-                  onClick={() => setMainTab('memory')}
+                  className={`tab ${mainTab === 'wiki' ? 'active' : ''}`}
+                  onClick={() => setMainTab('wiki')}
                 >
-                  Memory
+                  Wiki
                 </div>
                 <div
                   className={`tab ${mainTab === 'activity' ? 'active' : ''}`}
@@ -355,8 +355,8 @@ export default function App() {
                   )
                 ) : mainTab === 'content' ? (
                   <SharedContentView projectId={selectedProjectId} refreshTrigger={contentRefresh} />
-                ) : mainTab === 'memory' ? (
-                  <ProjectMemory projectId={selectedProjectId} />
+                ) : mainTab === 'wiki' ? (
+                  <ProjectWiki projectId={selectedProjectId} />
                 ) : (
                   <ActivityFeed projectId={selectedProjectId} wsRef={wsRef} />
                 )}

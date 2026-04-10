@@ -34,7 +34,7 @@ function parseLog(content: string): { date: string; action: string; summary: str
   return entries.reverse();
 }
 
-export default function ProjectMemory({ projectId }: Props) {
+export default function ProjectWiki({ projectId }: Props) {
   const [initialized, setInitialized] = useState<boolean | null>(null);
   const [files, setFiles] = useState<api.SharedContent[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -50,14 +50,14 @@ export default function ProjectMemory({ projectId }: Props) {
     setContent('');
     setEditing(false);
     setLogEntries([]);
-    api.getMemoryStatus(projectId).then(s => {
+    api.getWikiStatus(projectId).then(s => {
       setInitialized(s.initialized);
       if (s.initialized) loadFiles();
     });
   }, [projectId]);
 
   const loadFiles = async () => {
-    const list = await api.listMemoryFiles(projectId);
+    const list = await api.listWikiFiles(projectId);
     setFiles(list);
     if (list.length > 0 && !selected) {
       const def = list.find(f => f.filename === '_index.md') || list.find(f => f.filename === 'overview.md') || list[0];
@@ -65,7 +65,7 @@ export default function ProjectMemory({ projectId }: Props) {
     }
     // Load log entries
     try {
-      const log = await api.getMemoryFile(projectId, '_log.md');
+      const log = await api.getWikiFile(projectId, '_log.md');
       if (log) setLogEntries(parseLog(log.content));
     } catch { /* no log yet */ }
   };
@@ -73,13 +73,13 @@ export default function ProjectMemory({ projectId }: Props) {
   useEffect(() => {
     if (!selected) { setContent(''); return; }
     setEditing(false);
-    api.getMemoryFile(projectId, selected).then(item => {
+    api.getWikiFile(projectId, selected).then(item => {
       if (item) setContent(item.content);
     }).catch(() => setContent(''));
   }, [projectId, selected]);
 
   const handleInit = async () => {
-    await api.initializeMemory(projectId);
+    await api.initializeWiki(projectId);
     setInitialized(true);
     await loadFiles();
   };
@@ -87,7 +87,7 @@ export default function ProjectMemory({ projectId }: Props) {
   const handleSave = async () => {
     if (!selected) return;
     setSaving(true);
-    await api.updateMemoryFile(projectId, selected, content);
+    await api.updateWikiFile(projectId, selected, content);
     setSaving(false);
     setEditing(false);
     // Reload log if we edited it
@@ -104,14 +104,14 @@ export default function ProjectMemory({ projectId }: Props) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', maxWidth: 420 }}>
-          <h3 style={{ marginBottom: 8 }}>Project Memory</h3>
+          <h3 style={{ marginBottom: 8 }}>Project Wiki</h3>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
-            Initialize a persistent knowledge base for this project.
+            Initialize a persistent wiki for this project.
             AI agents will maintain architecture docs, API specs, decisions,
             and progress — following Karpathy's LLM Wiki pattern.
           </p>
           <button className="primary" onClick={handleInit} style={{ padding: '6px 20px', fontSize: 13 }}>
-            Initialize Memory
+            Initialize Wiki
           </button>
         </div>
       </div>
@@ -211,7 +211,7 @@ export default function ProjectMemory({ projectId }: Props) {
                     </button>
                     <button onClick={() => {
                       setEditing(false);
-                      api.getMemoryFile(projectId, selected).then(item => {
+                      api.getWikiFile(projectId, selected).then(item => {
                         if (item) setContent(item.content);
                       });
                     }}>Cancel</button>

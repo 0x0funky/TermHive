@@ -51,16 +51,16 @@ export const deleteContent = (projectId: string, filename: string) =>
   request<void>(`/projects/${projectId}/content/${encodeURIComponent(filename)}`, { method: 'DELETE' });
 
 // Project Memory
-export const getMemoryStatus = (projectId: string) =>
-  request<{ initialized: boolean }>(`/projects/${projectId}/memory/status`);
-export const initializeMemory = (projectId: string) =>
-  request<{ initialized: boolean }>(`/projects/${projectId}/memory/initialize`, { method: 'POST' });
-export const listMemoryFiles = (projectId: string) =>
-  request<SharedContent[]>(`/projects/${projectId}/memory`);
-export const getMemoryFile = (projectId: string, filename: string) =>
-  request<SharedContent>(`/projects/${projectId}/memory/${encodeURIComponent(filename)}`);
-export const updateMemoryFile = (projectId: string, filename: string, content: string) =>
-  request<SharedContent>(`/projects/${projectId}/memory/${encodeURIComponent(filename)}`, { method: 'PUT', body: JSON.stringify({ content }) });
+export const getWikiStatus = (projectId: string) =>
+  request<{ initialized: boolean }>(`/projects/${projectId}/wiki/status`);
+export const initializeWiki = (projectId: string) =>
+  request<{ initialized: boolean }>(`/projects/${projectId}/wiki/initialize`, { method: 'POST' });
+export const listWikiFiles = (projectId: string) =>
+  request<SharedContent[]>(`/projects/${projectId}/wiki`);
+export const getWikiFile = (projectId: string, filename: string) =>
+  request<SharedContent>(`/projects/${projectId}/wiki/${encodeURIComponent(filename)}`);
+export const updateWikiFile = (projectId: string, filename: string, content: string) =>
+  request<SharedContent>(`/projects/${projectId}/wiki/${encodeURIComponent(filename)}`, { method: 'PUT', body: JSON.stringify({ content }) });
 
 // Types (shared with backend)
 export interface Project {

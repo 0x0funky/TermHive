@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { Agent } from './types.js';
-import { updateAgent, getProjectData, SHARED_CONTENT_DIR, MEMORY_DIR } from './storage.js';
+import { updateAgent, getProjectData, SHARED_CONTENT_DIR, WIKI_DIR } from './storage.js';
 
 // Dynamic import for node-pty (optional dependency)
 let pty: typeof import('node-pty') | null = null;
@@ -57,9 +57,9 @@ function ensureSharedDir(projectName: string): string {
 /**
  * Build the Termhive instruction section content.
  */
-function buildTermhiveSection(sharedPath: string, memoryPath: string): { marker: string; section: string } {
+function buildTermhiveSection(sharedPath: string, wikiPath: string): { marker: string; section: string } {
   const marker = '<!-- Termhive -->';
-  const hasMemory = fs.existsSync(path.join(memoryPath, '_schema.md'));
+  const hasWiki = fs.existsSync(path.join(wikiPath, '_schema.md'));
 
   const lines = [
     '',
@@ -71,13 +71,13 @@ function buildTermhiveSection(sharedPath: string, memoryPath: string): { marker:
     '',
   ];
 
-  if (hasMemory) {
+  if (hasWiki) {
     lines.push(
-      'Project memory directory: `' + memoryPath + '`',
-      '- Read `_index.md` first to understand the project',
-      '- Read `_schema.md` for memory maintenance conventions',
-      '- When asked to "update memory", follow the schema rules',
-      '- Do NOT auto-update memory while coding — only when explicitly asked',
+      'Project wiki directory: `' + wikiPath + '`',
+      '- **Start every session by reading `_index.md`** to understand current project state',
+      '- Read `_schema.md` for wiki maintenance conventions',
+      '- When asked to "update wiki", follow the schema rules',
+      '- Do NOT auto-update wiki while coding — only when explicitly asked',
       '',
     );
   }
@@ -89,8 +89,8 @@ function buildTermhiveSection(sharedPath: string, memoryPath: string): { marker:
 /**
  * Write Termhive instructions to a markdown file (CLAUDE.md or AGENTS.md).
  */
-function ensureInstructionFile(filePath: string, projectName: string, sharedPath: string, memoryPath: string) {
-  const { marker, section } = buildTermhiveSection(sharedPath, memoryPath);
+function ensureInstructionFile(filePath: string, projectName: string, sharedPath: string, wikiPath: string) {
+  const { marker, section } = buildTermhiveSection(sharedPath, wikiPath);
 
   if (fs.existsSync(filePath)) {
     let existing = fs.readFileSync(filePath, 'utf-8');
@@ -104,23 +104,23 @@ function ensureInstructionFile(filePath: string, projectName: string, sharedPath
   }
 }
 
-function getCliCommand(agent: Agent, sharedPath: string, memoryPath: string): { cmd: string; args: string[] } {
+function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string): { cmd: string; args: string[] } {
   const args: string[] = [];
-  const hasMemory = fs.existsSync(path.join(memoryPath, '_schema.md'));
+  const hasWiki = fs.existsSync(path.join(wikiPath, '_schema.md'));
   switch (agent.cli) {
     case 'claude':
       if (agent.flags?.dangerouslySkipPermissions) args.push('--dangerously-skip-permissions');
       if (agent.flags?.remoteControl) args.push('--remote-control');
       args.push('--add-dir', sharedPath);
-      if (hasMemory) args.push('--add-dir', memoryPath);
+      if (hasWiki) args.push('--add-dir', wikiPath);
       return { cmd: 'claude', args };
     case 'codex':
       args.push('--add-dir', sharedPath);
-      if (hasMemory) args.push('--add-dir', memoryPath);
+      if (hasWiki) args.push('--add-dir', wikiPath);
       return { cmd: 'codex', args };
     case 'gemini':
       args.push('--include-directories', sharedPath);
-      if (hasMemory) args.push('--include-directories', memoryPath);
+      if (hasWiki) args.push('--include-directories', wikiPath);
       return { cmd: 'gemini', args };
   }
 }
@@ -137,7 +137,7 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
 
   const projectName = projectData.project.name;
   const sharedPath = ensureSharedDir(projectName);
-  const memoryPath = path.join(MEMORY_DIR, projectName);
+  const wikiPath = path.join(WIKI_DIR, projectName);
 
   // Write instruction file in agent's cwd so the CLI knows about shared content + memory
   const instructionFiles: Record<string, string> = {
@@ -146,9 +146,9 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
     gemini: 'AGENTS.md',
   };
   const instrFile = path.join(agent.cwd, instructionFiles[agent.cli]);
-  ensureInstructionFile(instrFile, projectName, sharedPath, memoryPath);
+  ensureInstructionFile(instrFile, projectName, sharedPath, wikiPath);
 
-  const { cmd, args } = getCliCommand(agent, sharedPath, memoryPath);
+  const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath);
   const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
 
   let proc: IPty;

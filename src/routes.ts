@@ -153,29 +153,29 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
   });
 
   // --- Project Memory ---
-  router.get('/projects/:id/memory/status', (req: Request, res: Response) => {
-    res.json({ initialized: storage.isMemoryInitialized(req.params.id) });
+  router.get('/projects/:id/wiki/status', (req: Request, res: Response) => {
+    res.json({ initialized: storage.isWikiInitialized(req.params.id) });
   });
 
-  router.post('/projects/:id/memory/initialize', (req: Request, res: Response) => {
-    const ok = storage.initializeMemory(req.params.id);
+  router.post('/projects/:id/wiki/initialize', (req: Request, res: Response) => {
+    const ok = storage.initializeWiki(req.params.id);
     if (!ok) { res.status(404).json({ error: 'Project not found' }); return; }
     res.json({ initialized: true });
   });
 
-  router.get('/projects/:id/memory', (req: Request, res: Response) => {
-    res.json(storage.listMemoryFiles(req.params.id));
+  router.get('/projects/:id/wiki', (req: Request, res: Response) => {
+    res.json(storage.listWikiFiles(req.params.id));
   });
 
-  router.get('/projects/:id/memory/:filename(*)', (req: Request, res: Response) => {
-    const item = storage.getMemoryFile(req.params.id, req.params.filename);
+  router.get('/projects/:id/wiki/:filename(*)', (req: Request, res: Response) => {
+    const item = storage.getWikiFile(req.params.id, req.params.filename);
     if (!item) { res.status(404).json({ error: 'File not found' }); return; }
     res.json(item);
   });
 
-  router.put('/projects/:id/memory/:filename(*)', (req: Request, res: Response) => {
+  router.put('/projects/:id/wiki/:filename(*)', (req: Request, res: Response) => {
     const { content } = req.body;
-    const item = storage.updateMemoryFile(req.params.id, req.params.filename, content || '');
+    const item = storage.updateWikiFile(req.params.id, req.params.filename, content || '');
     if (!item) { res.status(404).json({ error: 'File not found' }); return; }
     res.json(item);
   });
