@@ -585,6 +585,12 @@ body {
   color: var(--text-primary);
 }
 
+.sidebar-usage-reset {
+  color: var(--text-muted);
+  font-size: 9px;
+  margin-left: 4px;
+}
+
 .sidebar-usage-bar {
   width: 100%;
   height: 5.25px;

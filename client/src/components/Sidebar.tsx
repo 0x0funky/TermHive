@@ -23,12 +23,30 @@ interface Props {
   onExpandProject: (projectId: string) => void;
 }
 
-function UsageBar({ label, value, color }: { label: string; value: number; color: string }) {
+function formatResetTime(resetsAt: string | null): string {
+  if (!resetsAt) return '';
+  const reset = new Date(resetsAt);
+  const now = new Date();
+  const diffMs = reset.getTime() - now.getTime();
+  if (diffMs <= 0) return 'now';
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return diffMins + 'm';
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return diffHrs + 'h ' + (diffMins % 60) + 'm';
+  const diffDays = Math.floor(diffHrs / 24);
+  return diffDays + 'd ' + (diffHrs % 24) + 'h';
+}
+
+function UsageBar({ label, value, color, resetsAt }: { label: string; value: number; color: string; resetsAt?: string | null }) {
+  const resetStr = formatResetTime(resetsAt || null);
   return (
     <>
       <div className="sidebar-usage-row">
         <span className="sidebar-usage-label">{label}</span>
-        <span className="sidebar-usage-pct">{Math.round(value)}%</span>
+        <span className="sidebar-usage-pct">
+          {Math.round(value)}%
+          {resetStr && <span className="sidebar-usage-reset"> resets {resetStr}</span>}
+        </span>
       </div>
       <div className="sidebar-usage-bar">
         <div className="sidebar-usage-fill" style={{ width: value + '%', background: color }} />
@@ -45,16 +63,26 @@ export default function Sidebar({
   const [collapsed, setCollapsed] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [usageData, setUsageData] = useState<{
-    claude: { session: number | null; week: number | null } | null;
-    codex: { session: number | null; week: number | null } | null;
+    claude: { session: number | null; sessionResets: string | null; week: number | null; weekResets: string | null } | null;
+    codex: { session: number | null; sessionResets: string | null; week: number | null; weekResets: string | null } | null;
   }>({ claude: null, codex: null });
 
   useEffect(() => {
     const fetchUsage = () => {
       fetch('/api/usage').then(r => r.json()).then(data => {
         setUsageData({
-          claude: data.claude ? { session: data.claude.session?.utilization ?? null, week: data.claude.week?.utilization ?? null } : null,
-          codex: data.codex ? { session: data.codex.session?.utilization ?? null, week: data.codex.week?.utilization ?? null } : null,
+          claude: data.claude ? {
+            session: data.claude.session?.utilization ?? null,
+            sessionResets: data.claude.session?.resetsAt ?? null,
+            week: data.claude.week?.utilization ?? null,
+            weekResets: data.claude.week?.resetsAt ?? null,
+          } : null,
+          codex: data.codex ? {
+            session: data.codex.session?.utilization ?? null,
+            sessionResets: data.codex.session?.resetsAt ?? null,
+            week: data.codex.week?.utilization ?? null,
+            weekResets: data.codex.week?.resetsAt ?? null,
+          } : null,
         });
       }).catch(() => {});
     };
@@ -204,10 +232,10 @@ export default function Sidebar({
                 Claude
               </div>
               {usageData.claude.session !== null && (
-                <UsageBar label="Session" value={usageData.claude.session} color="var(--accent)" />
+                <UsageBar label="Session" value={usageData.claude.session} color="var(--accent)" resetsAt={usageData.claude.sessionResets} />
               )}
               {usageData.claude.week !== null && (
-                <UsageBar label="Week" value={usageData.claude.week} color="var(--accent)" />
+                <UsageBar label="Week" value={usageData.claude.week} color="var(--accent)" resetsAt={usageData.claude.weekResets} />
               )}
             </>
           )}
@@ -220,10 +248,10 @@ export default function Sidebar({
                 Codex
               </div>
               {usageData.codex.session !== null && (
-                <UsageBar label="Session" value={usageData.codex.session} color="var(--yellow)" />
+                <UsageBar label="Session" value={usageData.codex.session} color="var(--yellow)" resetsAt={usageData.codex.sessionResets} />
               )}
               {usageData.codex.week !== null && (
-                <UsageBar label="Week" value={usageData.codex.week} color="var(--yellow)" />
+                <UsageBar label="Week" value={usageData.codex.week} color="var(--yellow)" resetsAt={usageData.codex.weekResets} />
               )}
             </>
           )}
