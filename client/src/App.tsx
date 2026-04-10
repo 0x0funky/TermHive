@@ -8,7 +8,8 @@ import ProjectWiki from './components/ProjectWiki';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import { useWebSocket } from './hooks/useWebSocket';
-import logoIcon from './assets/logo.svg';
+import logoDark from './assets/logo_dark_sm.jpg';
+import logoLight from './assets/logo_light_sm.jpg';
 import * as api from './api';
 import type { Project, Agent } from './api';
 
@@ -186,7 +187,7 @@ export default function App() {
         <h1>
           <div className="header-breadcrumb">
             <div className="header-logo">
-              <img src={logoIcon} alt="Termhive" />
+              <img src={theme === 'dark' ? logoDark : logoLight} alt="Termhive" />
             </div>
             <span>Termhive</span>
             {selectedProject && (
