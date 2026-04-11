@@ -7,9 +7,10 @@ interface Props {
   agentId: string;
   send: (msg: object) => void;
   wsRef: React.RefObject<WebSocket | null>;
+  onFocus?: () => void;
 }
 
-export default function Terminal({ agentId, send, wsRef }: Props) {
+export default function Terminal({ agentId, send, wsRef, onFocus }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -102,6 +103,13 @@ export default function Terminal({ agentId, send, wsRef }: Props) {
       send({ type: 'terminal:input', agentId, data });
     });
 
+    // Allow browser paste (Ctrl+V) to reach xterm
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.ctrlKey && e.key === 'v') return false; // let browser handle paste
+      if (e.ctrlKey && e.key === 'c' && term.hasSelection()) return false; // let browser handle copy
+      return true;
+    });
+
     term.onResize(({ cols, rows }) => {
       send({ type: 'terminal:resize', agentId, cols, rows });
     });
@@ -126,6 +134,11 @@ export default function Terminal({ agentId, send, wsRef }: Props) {
     const ws = wsRef.current;
     ws?.addEventListener('message', handler);
 
+    // Notify parent when terminal gets focus
+    const handleFocusIn = () => onFocus?.();
+    containerRef.current.addEventListener('focusin', handleFocusIn);
+    containerRef.current.addEventListener('mousedown', handleFocusIn);
+
     // Fit on resize — debounced to avoid thrashing during drag
     let fitTimeout: ReturnType<typeof setTimeout>;
     const resizeObserver = new ResizeObserver(() => {
@@ -137,6 +150,8 @@ export default function Terminal({ agentId, send, wsRef }: Props) {
     return () => {
       clearTimeout(fitTimeout);
       clearTimeout(scrollTimer);
+      containerRef.current?.removeEventListener('focusin', handleFocusIn);
+      containerRef.current?.removeEventListener('mousedown', handleFocusIn);
       send({ type: 'terminal:detach', agentId });
       ws?.removeEventListener('message', handler);
       resizeObserver.disconnect();

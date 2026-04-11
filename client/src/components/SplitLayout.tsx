@@ -154,12 +154,15 @@ interface CommonProps {
   onTreeChange: (tree: SplitNode) => void;
   onStartAgent: (agent: Agent) => void;
   onStopAgent: (agent: Agent) => void;
+  activePaneId: string | null;
+  setActivePaneId: (id: string) => void;
 }
 
 function PaneView({ node, tree, ...props }: CommonProps & { node: SplitNode & { type: 'pane' }; tree: SplitNode }) {
-  const { agents, send, wsRef, treeRef, onTreeChange, onStartAgent, onStopAgent } = props;
+  const { agents, send, wsRef, treeRef, onTreeChange, onStartAgent, onStopAgent, activePaneId, setActivePaneId } = props;
   const agent = agents.find(a => a.id === node.agentId);
   const canClose = countPanes(tree) > 1;
+  const isActive = activePaneId === node.id;
 
   const splitH = () => {
     const newNode: SplitNode = {
@@ -183,7 +186,16 @@ function PaneView({ node, tree, ...props }: CommonProps & { node: SplitNode & { 
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', minWidth: 0, minHeight: 0, maxWidth: '100%', width: '100%' }}>
+    <div
+      onMouseDown={() => setActivePaneId(node.id)}
+      style={{
+        display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden',
+        minWidth: 0, minHeight: 0, maxWidth: '100%', width: '100%',
+        border: isActive ? '1.5px solid var(--accent)' : '1.5px solid transparent',
+        borderRadius: 2,
+        transition: 'border-color 0.15s',
+      }}
+    >
       <div className="split-pane-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {agent && <span className={`status-dot ${agent.status}`} />}
@@ -222,7 +234,7 @@ function PaneView({ node, tree, ...props }: CommonProps & { node: SplitNode & { 
         </div>
       </div>
       {agent && agent.status === 'running' ? (
-        <Terminal agentId={agent.id} send={send} wsRef={wsRef} />
+        <Terminal agentId={agent.id} send={send} wsRef={wsRef} onFocus={() => setActivePaneId(node.id)} />
       ) : (
         <div className="empty-state" style={{ fontSize: 12 }}>
           {agent ? (
@@ -292,12 +304,13 @@ interface SplitLayoutProps {
 
 export default function SplitLayout({ agents, send, wsRef, tree, onTreeChange, onStartAgent, onStopAgent }: SplitLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [activePaneId, setActivePaneId] = useState<string | null>(null);
 
   // Keep a ref always pointing to the latest tree so drag handlers read fresh state
   const treeRef = useRef(tree);
   useEffect(() => { treeRef.current = tree; }, [tree]);
 
-  const commonProps: CommonProps = { agents, send, wsRef, treeRef, onTreeChange, onStartAgent, onStopAgent };
+  const commonProps: CommonProps = { agents, send, wsRef, treeRef, onTreeChange, onStartAgent, onStopAgent, activePaneId, setActivePaneId };
 
   return (
     <div ref={containerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
