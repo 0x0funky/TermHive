@@ -1,7 +1,16 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import type { Agent } from './types.js';
 import { updateAgent, getProjectData, SHARED_CONTENT_DIR, WIKI_DIR } from './storage.js';
+
+/** Expand leading ~ to the user's home directory */
+function expandHome(p: string): string {
+  if (p.startsWith('~/') || p === '~') {
+    return path.join(os.homedir(), p.slice(1));
+  }
+  return p;
+}
 
 // Dynamic import for node-pty (optional dependency)
 let pty: typeof import('node-pty') | null = null;
@@ -142,6 +151,8 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
   const sharedPath = ensureSharedDir(projectName);
   const wikiPath = path.join(WIKI_DIR, projectName);
 
+  const cwd = expandHome(agent.cwd);
+
   // Write instruction file in agent's cwd so the CLI knows about shared content + memory
   const instructionFiles: Record<string, string> = {
     claude: 'CLAUDE.md',
@@ -149,7 +160,7 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
     gemini: 'AGENTS.md',
     opencode: 'AGENTS.md',
   };
-  const instrFile = path.join(agent.cwd, instructionFiles[agent.cli]);
+  const instrFile = path.join(cwd, instructionFiles[agent.cli]);
   ensureInstructionFile(instrFile, projectName, sharedPath, wikiPath);
 
   const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath);
@@ -161,7 +172,7 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
       name: 'xterm-256color',
       cols: 120,
       rows: 30,
-      cwd: agent.cwd,
+      cwd,
       env: process.env as Record<string, string>,
     });
   } catch (err) {
