@@ -1,6 +1,6 @@
 # Termhive
 
-A web-based management platform for coding CLI agents (Claude Code, Codex CLI, Gemini CLI). Think of it as **tmux for coding agents** with a web UI, project organization, shared content, and a persistent project wiki.
+A web-based management platform for coding CLI agents (Claude Code, Codex CLI, Gemini CLI, OpenCode). Think of it as **tmux for coding agents** with a web UI, project organization, shared content, and a persistent project wiki.
 
 ![Termhive Demo](demo_page.png)
 
@@ -17,7 +17,7 @@ Termhive solves this with a browser-based dashboard and a persistent knowledge l
 
 ## Features
 
-- **Multi-vendor** — Claude Code, Codex CLI, Gemini CLI in one UI
+- **Multi-vendor** — Claude Code, Codex CLI, Gemini CLI, OpenCode in one UI
 - **Project organization** — Group agents by project, each with its own config
 - **Terminal streaming** — Real xterm.js terminals with live PTY via WebSocket
 - **Split view** — Tmux-like recursive splitting with draggable dividers, per-project persistent layouts
@@ -25,10 +25,12 @@ Termhive solves this with a browser-based dashboard and a persistent knowledge l
 - **Project Wiki** — Persistent wiki per project, inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern
 - **Activity feed** — Real-time file watcher on shared content + agent lifecycle events
 - **Auto instruction files** — Generates `CLAUDE.md` / `AGENTS.md` in each agent's cwd with shared content and wiki paths
-- **Agent flags** — `--dangerously-skip-permissions`, `--remote-control` for Claude Code
+- **Agent flags** — `--dangerously-skip-permissions` (Claude/OpenCode), `--remote-control` (Claude)
 - **Start/Stop All** — Batch control per project
 - **Light/Dark theme** — With Claude Code ANSI palette matching
 - **Usage monitor** — Claude & Codex rate limit tracking in sidebar
+- **Mobile responsive** — Slide-out sidebar, bottom agent tab bar, collapsible panels
+- **Active pane highlight** — Visual border on focused terminal pane (tmux-style)
 - **Lightweight** — JSON file storage, no database needed
 
 ## Quick Start
@@ -105,13 +107,14 @@ A persistent, structured wiki per project — inspired by [Karpathy's LLM Wiki](
 
 Shared content files are stored in `~/.termhive/shared_content/[project-name]/`. When an agent starts, the directory is automatically passed to the CLI:
 
-| CLI | Flag |
-|-----|------|
-| Claude Code | `--add-dir` |
-| Codex CLI | `--add-dir` |
-| Gemini CLI | `--include-directories` |
+| CLI | Flag | Instruction File |
+|-----|------|-----------------|
+| Claude Code | `--add-dir` | `CLAUDE.md` |
+| Codex CLI | `--add-dir` | `AGENTS.md` |
+| Gemini CLI | `--include-directories` | `AGENTS.md` |
+| OpenCode | via `AGENTS.md` | `AGENTS.md` |
 
-Instruction files (`CLAUDE.md` for Claude, `AGENTS.md` for Codex/Gemini) are auto-generated in each agent's working directory with paths to both shared content and wiki.
+Instruction files are auto-generated in each agent's working directory with paths to both shared content and wiki.
 
 All agents can read/write shared files, and the Termhive web UI reflects changes in real-time via file watching.
 
