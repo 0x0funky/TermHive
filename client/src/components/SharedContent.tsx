@@ -11,26 +11,22 @@ export default function SharedContentView({ projectId, refreshTrigger }: Props) 
   const [selected, setSelected] = useState<string | null>(null);
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Load file list when project changes or external refresh
   useEffect(() => {
     setSelected(null);
     setItems([]);
     setContent('');
     api.listContent(projectId).then(list => {
       setItems(list);
-      if (list.length > 0) {
-        setSelected(list[0].filename);
-      }
+      if (list.length > 0) setSelected(list[0].filename);
     });
   }, [projectId]);
 
-  // Auto-refresh file list when files change externally (agent writes)
   useEffect(() => {
     if (refreshTrigger === undefined || refreshTrigger === 0) return;
     api.listContent(projectId).then(list => {
       setItems(list);
-      // Reload current file content if it's selected
       if (selected) {
         api.getContent(projectId, selected).then(item => {
           if (item) setContent(item.content);
@@ -39,12 +35,8 @@ export default function SharedContentView({ projectId, refreshTrigger }: Props) 
     });
   }, [refreshTrigger]);
 
-  // Load file content when selection changes
   useEffect(() => {
-    if (!selected) {
-      setContent('');
-      return;
-    }
+    if (!selected) { setContent(''); return; }
     api.getContent(projectId, selected).then(item => {
       if (item) setContent(item.content);
     }).catch(() => setContent(''));
@@ -78,43 +70,80 @@ export default function SharedContentView({ projectId, refreshTrigger }: Props) 
     await reload();
   };
 
+  const handleSelect = (filename: string) => {
+    setSelected(filename);
+    // On mobile, close sidebar after selection
+    if (window.innerWidth <= 768) setSidebarOpen(false);
+  };
+
   return (
-    <div className="shared-content">
-      <div className="content-tabs">
-        {items.map(item => (
-          <div
-            key={item.filename}
-            className={`content-tab ${selected === item.filename ? 'active' : ''}`}
-            onClick={() => setSelected(item.filename)}
-          >
-            {item.filename}
-          </div>
-        ))}
-        <button onClick={handleNew} style={{ fontSize: 11 }}>+ New File</button>
-      </div>
-      {selected ? (
-        <div className="content-editor">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{selected}</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handleSave} className="primary" disabled={saving}>
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-              <button onClick={handleDelete} className="danger">Delete</button>
+    <div className="content-tree-layout">
+      {/* Sidebar file tree */}
+      <div className={`content-tree-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+        <div className="content-tree-header">
+          <span className="content-tree-title">Files</span>
+          <button className="btn-new-project" onClick={handleNew} title="New file">+</button>
+        </div>
+        <div className="content-tree-list">
+          {items.map(item => (
+            <div
+              key={item.filename}
+              className={`content-tree-item ${selected === item.filename ? 'active' : ''}`}
+              onClick={() => handleSelect(item.filename)}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                <path d="M2 1.5h4.5L9 4v6.5H2V1.5Z" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M6 1.5V4h3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span>{item.filename}</span>
             </div>
+          ))}
+          {items.length === 0 && (
+            <div style={{ padding: '12px 8px', fontSize: 11, color: 'var(--text-muted)' }}>
+              No files yet
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Content editor */}
+      <div className="content-tree-main">
+        {selected ? (
+          <>
+            <div className="content-tree-main-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  className="content-tree-toggle"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  title={sidebarOpen ? 'Hide files' : 'Show files'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 3h10M2 7h10M2 11h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                <span style={{ fontSize: 12.25, color: 'var(--text-primary)' }}>{selected}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={handleSave} className="memory-edit-btn" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button onClick={handleDelete} className="danger">Delete</button>
+              </div>
+            </div>
+            <textarea
+              className="content-tree-editor"
+              value={content}
+              onChange={e => setContent(e.target.value)}
+              onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(); } }}
+            />
+          </>
+        ) : (
+          <div className="empty-state">
+            <span>No shared content yet</span>
+            <button onClick={handleNew}>Create a file</button>
           </div>
-          <textarea
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(); } }}
-          />
-        </div>
-      ) : (
-        <div className="empty-state">
-          <span>No shared content yet</span>
-          <button onClick={handleNew}>Create a file</button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

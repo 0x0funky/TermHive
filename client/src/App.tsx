@@ -20,6 +20,14 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<Map<string, Agent[]>>(new Map());
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>('terminals');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -186,6 +194,14 @@ export default function App() {
       <div className="header">
         <h1>
           <div className="header-breadcrumb">
+            <button
+              className="mobile-menu-btn mobile-only"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
             <div className="header-logo">
               <img src={theme === 'dark' ? logoDark : logoLight} alt="Termhive" />
             </div>
@@ -260,6 +276,8 @@ export default function App() {
           onStartAll={handleStartAll}
           onStopAll={handleStopAll}
           onExpandProject={loadAgents}
+          mobileOpen={mobileMenuOpen}
+          onMobileClose={() => setMobileMenuOpen(false)}
         />
 
         <div className="content">
@@ -294,15 +312,50 @@ export default function App() {
 
               <div className="tab-content">
                 {mainTab === 'terminals' ? (
-                  viewMode === 'single' ? (
-                    // Single mode — click sidebar to switch agent
+                  isMobile ? (
+                    // Mobile mode — single terminal + bottom agent tabs
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                      {selectedAgent ? (
+                        <>
+                          {selectedAgent.status === 'running' ? (
+                            <Terminal agentId={selectedAgent.id} send={send} wsRef={wsRef} />
+                          ) : (
+                            <div className="empty-state">
+                              <span>Agent is stopped</span>
+                              <button className="primary" onClick={() => handleStartAgent(selectedAgent)}>Start</button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="empty-state">
+                          {projectAgents.length > 0 ? 'Select an agent below' : 'No agents yet'}
+                        </div>
+                      )}
+                      {/* Bottom agent tab bar */}
+                      {projectAgents.length > 0 && (
+                        <div className="mobile-agent-bar">
+                          {projectAgents.map(a => (
+                            <div
+                              key={a.id}
+                              className={`mobile-agent-tab ${selectedAgentId === a.id ? 'active' : ''}`}
+                              onClick={() => { setSelectedProjectId(a.projectId); setSelectedAgentId(a.id); }}
+                            >
+                              <span className={`status-dot ${a.status}`} />
+                              <span>{a.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : viewMode === 'single' ? (
+                    // Desktop single mode
                     selectedAgent ? (
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         <div className="split-pane-header">
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span className={`status-dot ${selectedAgent.status}`} />
                             <strong>{selectedAgent.name}</strong>
-                            <span style={{ fontSize: 11, opacity: 0.6 }}>
+                            <span className="desktop-only" style={{ fontSize: 11, opacity: 0.6 }}>
                               {selectedAgent.cli} &middot; {selectedAgent.cwd}
                             </span>
                             {selectedAgent.flags?.dangerouslySkipPermissions && (
@@ -337,7 +390,7 @@ export default function App() {
                       </div>
                     )
                   ) : (
-                    // Split mode — tmux-like
+                    // Desktop split mode
                     projectAgents.length > 0 ? (
                       <SplitLayout
                         agents={projectAgents}

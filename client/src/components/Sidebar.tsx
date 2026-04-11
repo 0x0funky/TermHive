@@ -21,6 +21,8 @@ interface Props {
   onStartAll: (projectId: string) => void;
   onStopAll: (projectId: string) => void;
   onExpandProject: (projectId: string) => void;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }
 
 function formatResetTime(resetsAt: string | null): string {
@@ -59,6 +61,7 @@ export default function Sidebar({
   projects, agents, selectedProjectId, selectedAgentId,
   onSelectProject, onSelectAgent, onNewProject, onNewAgent,
   onDeleteAgent, onStartAll, onStopAll, onExpandProject,
+  mobileOpen, onMobileClose,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
@@ -117,15 +120,30 @@ export default function Sidebar({
     );
   }
 
+  const handleSelectAgent = (projectId: string, agentId: string) => {
+    onSelectAgent(projectId, agentId);
+    onMobileClose();
+  };
+
+  const handleSelectProject = (id: string) => {
+    onSelectProject(id);
+  };
+
   return (
-    <div className="sidebar">
+    <>
+      {mobileOpen && <div className="sidebar-mobile-backdrop" onClick={onMobileClose} />}
+      <div className={`sidebar ${mobileOpen ? 'sidebar-mobile-open' : ''}`}>
       <div className="sidebar-header">
         <div className="sidebar-header-left">
           <span
-            onClick={() => setCollapsed(true)}
-            className="sidebar-collapse-btn"
+            onClick={() => { setCollapsed(true); onMobileClose(); }}
+            className="sidebar-collapse-btn desktop-only"
             title="Collapse sidebar"
           >&#x25C0;</span>
+          <span
+            onClick={onMobileClose}
+            className="sidebar-collapse-btn mobile-only"
+          >&#x2715;</span>
           <span className="sidebar-header-title">Projects</span>
         </div>
         <button className="btn-sm btn-new-project" onClick={onNewProject}>+</button>
@@ -142,7 +160,7 @@ export default function Sidebar({
             <div key={project.id} className="sidebar-project">
               <div
                 className={`sidebar-project-item ${isSelected ? 'active' : ''}`}
-                onClick={() => onSelectProject(project.id)}
+                onClick={() => handleSelectProject(project.id)}
               >
                 <span
                   onClick={(e) => { e.stopPropagation(); toggleProject(project.id); }}
@@ -185,7 +203,7 @@ export default function Sidebar({
                     <div
                       key={agent.id}
                       className={`sidebar-agent-item ${selectedAgentId === agent.id ? 'active' : ''}`}
-                      onClick={() => onSelectAgent(project.id, agent.id)}
+                      onClick={() => handleSelectAgent(project.id, agent.id)}
                     >
                       <div className="sidebar-agent-header">
                         <span className={`status-dot ${agent.status}`} />
@@ -204,7 +222,7 @@ export default function Sidebar({
 
                   <div
                     className="sidebar-agent-add"
-                    onClick={() => { onSelectProject(project.id); onNewAgent(); }}
+                    onClick={() => { handleSelectProject(project.id); onNewAgent(); }}
                   >
                     + Add Agent
                   </div>
@@ -258,5 +276,6 @@ export default function Sidebar({
         </div>
       )}
     </div>
+    </>
   );
 }

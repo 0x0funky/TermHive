@@ -42,6 +42,7 @@ export default function ProjectWiki({ projectId }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [logEntries, setLogEntries] = useState<{ date: string; action: string; summary: string }[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     setInitialized(null);
@@ -123,10 +124,15 @@ export default function ProjectWiki({ projectId }: Props) {
   const agentFiles = files.filter(f => f.filename.startsWith('agents/'));
   const rawFiles = files.filter(f => f.filename.startsWith('raw/'));
 
+  const handleFileSelect = (filename: string) => {
+    setSelected(filename);
+    if (window.innerWidth <= 768) setSidebarOpen(false);
+  };
+
   const FileItem = ({ f }: { f: api.SharedContent }) => (
     <div
       className={`memory-file-item ${selected === f.filename ? 'active' : ''}`}
-      onClick={() => setSelected(f.filename)}
+      onClick={() => handleFileSelect(f.filename)}
     >
       <span style={{ flex: 1 }}>
         {f.filename.startsWith('_') ? f.filename : f.filename.replace(/^(agents|raw)\//, '')}
@@ -139,11 +145,11 @@ export default function ProjectWiki({ projectId }: Props) {
     </div>
   );
 
-  const goToIndex = () => setSelected('_index.md');
+  const goToIndex = () => handleFileSelect('_index.md');
 
   return (
     <div className="memory-container">
-      <div className="memory-sidebar">
+      <div className={`memory-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
         <div className="memory-section-title">Index</div>
         {metaFiles.map(f => <FileItem key={f.filename} f={f} />)}
 
@@ -194,6 +200,15 @@ export default function ProjectWiki({ projectId }: Props) {
           <>
             <div className="memory-content-header">
               <div className="memory-content-header-left">
+                <button
+                  className="content-tree-toggle"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 3h10M2 7h10M2 11h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                  </svg>
+                </button>
                 {selected !== '_index.md' && (
                   <span onClick={goToIndex} className="memory-back-btn" title="Back to Index">
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
