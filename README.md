@@ -2,7 +2,7 @@
 
 A web-based management platform for coding CLI agents (Claude Code, Codex CLI, Gemini CLI, OpenCode). Think of it as **tmux for coding agents** with a web UI, project organization, shared content, and a persistent project wiki.
 
-![Termhive Demo](demo_page.png)
+https://github.com/user-attachments/assets/8c95c54b-5c1e-471e-9411-6150993b886b
 
 ## Why
 
