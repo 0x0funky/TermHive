@@ -122,6 +122,9 @@ function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string): { cm
       args.push('--include-directories', sharedPath);
       if (hasWiki) args.push('--include-directories', wikiPath);
       return { cmd: 'gemini', args };
+    case 'opencode':
+      if (agent.flags?.dangerouslySkipPermissions) args.push('--dangerously-skip-permissions');
+      return { cmd: 'opencode', args };
   }
 }
 
@@ -144,6 +147,7 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
     claude: 'CLAUDE.md',
     codex: 'AGENTS.md',
     gemini: 'AGENTS.md',
+    opencode: 'AGENTS.md',
   };
   const instrFile = path.join(agent.cwd, instructionFiles[agent.cli]);
   ensureInstructionFile(instrFile, projectName, sharedPath, wikiPath);

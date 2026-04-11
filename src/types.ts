@@ -11,7 +11,7 @@ export interface Agent {
   projectId: string;
   name: string;
   role?: string;
-  cli: 'claude' | 'codex' | 'gemini';
+  cli: 'claude' | 'codex' | 'gemini' | 'opencode';
   cwd: string;
   status: 'stopped' | 'running' | 'idle';
   pid?: number;

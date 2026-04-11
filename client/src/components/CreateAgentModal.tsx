@@ -23,8 +23,10 @@ export default function CreateAgentModal({ projectCwd, onClose, onCreate }: Prop
     e.preventDefault();
     if (!name) return;
     const flags: Flags = {};
-    if (cli === 'claude') {
+    if (cli === 'claude' || cli === 'opencode') {
       if (skipPermissions) flags.dangerouslySkipPermissions = true;
+    }
+    if (cli === 'claude') {
       if (remoteControl) flags.remoteControl = true;
     }
     onCreate({
@@ -48,11 +50,12 @@ export default function CreateAgentModal({ projectCwd, onClose, onCreate }: Prop
             <option value="claude">Claude Code</option>
             <option value="codex">Codex CLI</option>
             <option value="gemini">Gemini CLI</option>
+            <option value="opencode">OpenCode</option>
           </select>
 
-          {cli === 'claude' && (
+          {(cli === 'claude' || cli === 'opencode') && (
             <div style={{ marginTop: 12 }}>
-              <label style={{ marginBottom: 8 }}>Claude Flags</label>
+              <label style={{ marginBottom: 8 }}>Flags</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0 }}>
                   <input
@@ -63,15 +66,17 @@ export default function CreateAgentModal({ projectCwd, onClose, onCreate }: Prop
                   />
                   <span style={{ fontSize: 13 }}>--dangerously-skip-permissions</span>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0 }}>
-                  <input
-                    type="checkbox"
-                    checked={remoteControl}
-                    onChange={e => setRemoteControl(e.target.checked)}
-                    style={{ width: 'auto' }}
-                  />
-                  <span style={{ fontSize: 13 }}>--remote-control</span>
-                </label>
+                {cli === 'claude' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={remoteControl}
+                      onChange={e => setRemoteControl(e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span style={{ fontSize: 13 }}>--remote-control</span>
+                  </label>
+                )}
               </div>
             </div>
           )}
