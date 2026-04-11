@@ -19,8 +19,8 @@ export const createProject = (data: { name: string; cwd: string; description?: s
   request<Project>('/projects', { method: 'POST', body: JSON.stringify(data) });
 export const updateProject = (id: string, data: Partial<Project>) =>
   request<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-export const deleteProject = (id: string) =>
-  request<void>(`/projects/${id}`, { method: 'DELETE' });
+export const deleteProject = (id: string, removeData?: boolean) =>
+  request<void>(`/projects/${id}?removeData=${removeData ? 'true' : 'false'}`, { method: 'DELETE' });
 
 // Agents
 export const listAgents = (projectId: string) =>

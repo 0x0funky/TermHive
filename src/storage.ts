@@ -68,6 +68,9 @@ export function createProject(name: string, cwd: string, description?: string): 
     createdAt: new Date().toISOString(),
   };
   saveProjectData({ project, agents: [] });
+  // Auto-init shared content + wiki
+  ensureDir(sharedDir(name));
+  initializeWiki(project.id);
   return project;
 }
 
@@ -79,10 +82,20 @@ export function updateProject(projectId: string, updates: Partial<Pick<Project, 
   return data.project;
 }
 
-export function deleteProject(projectId: string): boolean {
+export function deleteProject(projectId: string, removeData?: boolean): boolean {
+  const data = getProjectData(projectId);
+  if (!data) return false;
+
+  // Remove shared content and wiki if requested
+  if (removeData) {
+    const shared = sharedDir(data.project.name);
+    if (fs.existsSync(shared)) fs.rmSync(shared, { recursive: true });
+    const wiki = wikiDir(data.project.name);
+    if (fs.existsSync(wiki)) fs.rmSync(wiki, { recursive: true });
+  }
+
   const dir = projectDir(projectId);
-  if (!fs.existsSync(dir)) return false;
-  fs.rmSync(dir, { recursive: true });
+  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true });
   return true;
 }
 

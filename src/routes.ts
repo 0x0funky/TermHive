@@ -28,7 +28,8 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
   });
 
   router.delete('/projects/:id', (req: Request, res: Response) => {
-    if (!storage.deleteProject(req.params.id)) {
+    const removeData = req.query.removeData === 'true';
+    if (!storage.deleteProject(req.params.id, removeData)) {
       res.status(404).json({ error: 'Project not found' });
       return;
     }

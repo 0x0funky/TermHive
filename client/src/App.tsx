@@ -159,7 +159,8 @@ export default function App() {
     if (!selectedProjectId) return;
     const project = projects.find(p => p.id === selectedProjectId);
     if (!confirm(`Delete project "${project?.name}"?`)) return;
-    await api.deleteProject(selectedProjectId);
+    const removeData = confirm('Also remove shared content and wiki data?');
+    await api.deleteProject(selectedProjectId, removeData);
     setSelectedProjectId(null);
     setSelectedAgentId(null);
     await loadProjects();
