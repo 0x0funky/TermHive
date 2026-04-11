@@ -78,20 +78,24 @@ function buildTermhiveSection(sharedPath: string, wikiPath: string): { marker: s
     'Shared content directory: `' + sharedPath + '`',
     '- Read/write files here to share information with other agents and the user',
     '',
+    'Project wiki directory: `' + wikiPath + '`',
   ];
 
   if (hasWiki) {
     lines.push(
-      'Project wiki directory: `' + wikiPath + '`',
       '- **Start every session by reading `_index.md`** to understand current project state',
       '- Read `_schema.md` for wiki maintenance conventions',
       '- When asked to "update wiki", follow the schema rules',
       '- Do NOT auto-update wiki while coding — only when explicitly asked',
-      '',
+    );
+  } else {
+    lines.push(
+      '- Wiki not initialized yet. User can initialize it from the Termhive Wiki tab.',
+      '- Once initialized, read `_index.md` to understand the project.',
     );
   }
 
-  lines.push('<!-- End Termhive -->', '');
+  lines.push('', '<!-- End Termhive -->', '');
   return { marker, section: lines.join('\n') };
 }
 
@@ -115,21 +119,20 @@ function ensureInstructionFile(filePath: string, projectName: string, sharedPath
 
 function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string): { cmd: string; args: string[] } {
   const args: string[] = [];
-  const hasWiki = fs.existsSync(path.join(wikiPath, '_schema.md'));
   switch (agent.cli) {
     case 'claude':
       if (agent.flags?.dangerouslySkipPermissions) args.push('--dangerously-skip-permissions');
       if (agent.flags?.remoteControl) args.push('--remote-control');
       args.push('--add-dir', sharedPath);
-      if (hasWiki) args.push('--add-dir', wikiPath);
+      args.push('--add-dir', wikiPath);
       return { cmd: 'claude', args };
     case 'codex':
       args.push('--add-dir', sharedPath);
-      if (hasWiki) args.push('--add-dir', wikiPath);
+      args.push('--add-dir', wikiPath);
       return { cmd: 'codex', args };
     case 'gemini':
       args.push('--include-directories', sharedPath);
-      if (hasWiki) args.push('--include-directories', wikiPath);
+      args.push('--include-directories', wikiPath);
       return { cmd: 'gemini', args };
     case 'opencode':
       if (agent.flags?.dangerouslySkipPermissions) args.push('--dangerously-skip-permissions');
