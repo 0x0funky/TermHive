@@ -22,10 +22,10 @@ export default function CreateProjectModal({ onClose, onCreate }: Props) {
         <h2>New Project</h2>
         <form onSubmit={handleSubmit}>
           <label>Project Name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DexlessAI" autoFocus />
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. MyProject" autoFocus />
 
           <label>Working Directory</label>
-          <input value={cwd} onChange={e => setCwd(e.target.value)} placeholder="e.g. D:\projects\dexless" />
+          <input value={cwd} onChange={e => setCwd(e.target.value)} placeholder="e.g. /home/user/projects/myapp" />
 
           <label>Description (optional)</label>
           <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief description" />
