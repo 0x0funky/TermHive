@@ -1,8 +1,29 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import type { Agent } from './types.js';
 import { updateAgent, getProjectData, SHARED_CONTENT_DIR, WIKI_DIR } from './storage.js';
+import { writeClaudeMcpConfig, writeCodexMcpConfig, removeClaudeMcpConfig, removeCodexMcpConfig, getClaudeMcpConfigPath } from './mcp-config.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname_ = path.dirname(__filename);
+
+/**
+ * Absolute path to the compiled MCP server entry (dist/mcp-server.js).
+ * tsup builds mcp-server.ts alongside server.ts in the same dist folder.
+ */
+function getMcpServerPath(): string {
+  return path.resolve(__dirname_, 'mcp-server.js');
+}
+
+/**
+ * Hub URL that the spawned MCP server will call back to. Matches the port
+ * that server.ts listens on.
+ */
+function getHubUrl(): string {
+  return process.env.TERMHIVE_HUB_URL || `http://localhost:${process.env.PORT || '3200'}`;
+}
 
 /** Expand leading ~ to the user's home directory */
 function expandHome(p: string): string {
@@ -66,7 +87,12 @@ function ensureSharedDir(projectName: string): string {
 /**
  * Build the Termhive instruction section content.
  */
-function buildTermhiveSection(sharedPath: string, wikiPath: string): { marker: string; section: string } {
+function buildTermhiveSection(
+  sharedPath: string,
+  wikiPath: string,
+  currentAgent: Agent,
+  teammates: Agent[],
+): { marker: string; section: string } {
   const marker = '<!-- Termhive -->';
   const hasWiki = fs.existsSync(path.join(wikiPath, '_schema.md'));
 
@@ -95,6 +121,36 @@ function buildTermhiveSection(sharedPath: string, wikiPath: string): { marker: s
     );
   }
 
+  // Teammates section — only emitted for CLIs that have MCP support (claude, codex)
+  const mcpSupported = currentAgent.cli === 'claude' || currentAgent.cli === 'codex';
+  if (mcpSupported) {
+    lines.push(
+      '',
+      '### Teammates (other agents in this project)',
+      '',
+      `You are **${currentAgent.name}**` + (currentAgent.role ? ` (${currentAgent.role})` : '') + '.',
+      '',
+    );
+    if (teammates.length === 0) {
+      lines.push('You currently have no teammates. When other agents are added, they will appear here.');
+    } else {
+      lines.push('Other agents you can message:');
+      for (const t of teammates) {
+        const role = t.role ? ` — ${t.role}` : '';
+        lines.push(`- **${t.name}** (${t.cli})${role}`);
+      }
+      lines.push(
+        '',
+        'To send a message to a teammate, use the `message_agent` MCP tool:',
+        '- When the user says things like "tell backend I finished the API" or "跟後端說我做完了",',
+        '  call `message_agent(target="<teammate name>", message="<what to say>")`.',
+        '- The teammate will see your message in their terminal.',
+        '- Use `list_teammates` if you need to look up who is available.',
+        '- Messages are one-way notifications — do NOT wait for a reply in the same tool call.',
+      );
+    }
+  }
+
   lines.push('', '<!-- End Termhive -->', '');
   return { marker, section: lines.join('\n') };
 }
@@ -102,8 +158,15 @@ function buildTermhiveSection(sharedPath: string, wikiPath: string): { marker: s
 /**
  * Write Termhive instructions to a markdown file (CLAUDE.md or AGENTS.md).
  */
-function ensureInstructionFile(filePath: string, projectName: string, sharedPath: string, wikiPath: string) {
-  const { marker, section } = buildTermhiveSection(sharedPath, wikiPath);
+function ensureInstructionFile(
+  filePath: string,
+  projectName: string,
+  sharedPath: string,
+  wikiPath: string,
+  currentAgent: Agent,
+  teammates: Agent[],
+) {
+  const { section } = buildTermhiveSection(sharedPath, wikiPath, currentAgent, teammates);
 
   if (fs.existsSync(filePath)) {
     let existing = fs.readFileSync(filePath, 'utf-8');
@@ -117,7 +180,7 @@ function ensureInstructionFile(filePath: string, projectName: string, sharedPath
   }
 }
 
-function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string): { cmd: string; args: string[] } {
+function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string, mcpConfigPath: string | null): { cmd: string; args: string[] } {
   const args: string[] = [];
   switch (agent.cli) {
     case 'claude':
@@ -125,8 +188,13 @@ function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string): { cm
       if (agent.flags?.remoteControl) args.push('--remote-control');
       args.push('--add-dir', sharedPath);
       args.push('--add-dir', wikiPath);
+      if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
       return { cmd: 'claude', args };
     case 'codex':
+      // Codex's --add-dir adds *writable* roots, which requires sandbox mode
+      // to be at least workspace-write. Default to workspace-write so shared
+      // content / wiki are actually writable by the agent.
+      args.push('-s', 'workspace-write');
       args.push('--add-dir', sharedPath);
       args.push('--add-dir', wikiPath);
       return { cmd: 'codex', args };
@@ -156,7 +224,29 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
 
   const cwd = expandHome(agent.cwd);
 
-  // Write instruction file in agent's cwd so the CLI knows about shared content + memory
+  // Resolve teammates (all other agents in the same project)
+  const teammates = projectData.agents.filter(a => a.id !== agent.id);
+
+  // Register MCP server for agent-to-agent messaging (Claude + Codex only for now)
+  let claudeMcpConfigPath: string | null = null;
+  try {
+    const mcpCtx = {
+      agent,
+      agentCwd: cwd,
+      hubUrl: getHubUrl(),
+      mcpServerPath: getMcpServerPath(),
+    };
+    if (agent.cli === 'claude') {
+      claudeMcpConfigPath = writeClaudeMcpConfig(mcpCtx);
+    } else if (agent.cli === 'codex') {
+      writeCodexMcpConfig(mcpCtx);
+    }
+  } catch (err) {
+    console.warn(`[pty-manager] Failed to write MCP config for ${agent.name}:`, err);
+    // Non-fatal: agent still starts, just without messaging capability
+  }
+
+  // Write instruction file in agent's cwd so the CLI knows about shared content + memory + teammates
   const instructionFiles: Record<string, string> = {
     claude: 'CLAUDE.md',
     codex: 'AGENTS.md',
@@ -164,9 +254,9 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
     opencode: 'AGENTS.md',
   };
   const instrFile = path.join(cwd, instructionFiles[agent.cli]);
-  ensureInstructionFile(instrFile, projectName, sharedPath, wikiPath);
+  ensureInstructionFile(instrFile, projectName, sharedPath, wikiPath, agent, teammates);
 
-  const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath);
+  const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath, claudeMcpConfigPath);
   const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
 
   let proc: IPty;
@@ -227,6 +317,40 @@ export function writeToAgent(agentId: string, data: string) {
   const session = sessions.get(agentId);
   if (!session) return;
   session.pty.write(data);
+}
+
+/**
+ * Inject an agent-to-agent message into the target agent's terminal.
+ * The message is formatted so the target's LLM sees it as if the user had
+ * just typed it in — a bracketed notification with sender identity.
+ *
+ * Returns true if delivered to a running PTY, false if the target is not running.
+ */
+export function injectMessage(targetAgentId: string, fromName: string, message: string): boolean {
+  const session = sessions.get(targetAgentId);
+  if (!session) return false;
+
+  // Single-line banner + message body. Terminating with Enter so most CLIs
+  // treat it as a submitted user message rather than pending input.
+  const clean = message.replace(/\r/g, '').trim();
+  const payload = `[Message from ${fromName}]: ${clean}\r`;
+  session.pty.write(payload);
+  return true;
+}
+
+/**
+ * Clean up MCP config for an agent (called on deletion).
+ */
+export function cleanupMcpConfig(agent: Agent) {
+  try {
+    if (agent.cli === 'claude') {
+      removeClaudeMcpConfig(agent.id);
+    } else if (agent.cli === 'codex') {
+      removeCodexMcpConfig(agent.id);
+    }
+  } catch (err) {
+    console.warn(`[pty-manager] Failed to clean up MCP config for ${agent.name}:`, err);
+  }
 }
 
 export function resizeAgent(agentId: string, cols: number, rows: number) {

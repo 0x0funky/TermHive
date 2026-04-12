@@ -47,8 +47,21 @@ export interface ActivityEvent {
   projectId: string;
   agentId?: string;
   agentName?: string;
-  event: 'agent:started' | 'agent:stopped' | 'content:created' | 'content:modified' | 'content:deleted' | 'user:input';
+  event: 'agent:started' | 'agent:stopped' | 'content:created' | 'content:modified' | 'content:deleted' | 'user:input' | 'agent:message';
   detail: string;
+  timestamp: string;
+  // For agent:message events
+  fromAgent?: string;
+  toAgent?: string;
+  message?: string;
+}
+
+export interface AgentMessage {
+  fromAgentId: string;
+  fromAgentName: string;
+  toAgentId: string;
+  toAgentName: string;
+  message: string;
   timestamp: string;
 }
 

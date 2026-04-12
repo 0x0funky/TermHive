@@ -75,6 +75,15 @@ const icons: Record<string, { svg: JSX.Element; symbol: string; color: string }>
     symbol: '-',
     color: 'var(--red)',
   },
+  'agent:message': {
+    svg: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 3.5C2 2.9 2.4 2.5 3 2.5H11C11.6 2.5 12 2.9 12 3.5V9C12 9.6 11.6 10 11 10H5L3 12V10H3C2.4 10 2 9.6 2 9V3.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+    symbol: '@',
+    color: 'var(--accent)',
+  },
 };
 
 const defaultIcon = {
