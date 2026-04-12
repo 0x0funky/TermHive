@@ -76,12 +76,93 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
   });
 
   router.delete('/projects/:id/agents/:aid', (req: Request, res: Response) => {
+    const agent = storage.getAgent(req.params.id, req.params.aid);
     ptyManager.stopAgent(req.params.aid);
+    if (agent) ptyManager.cleanupMcpConfig(agent);
     if (!storage.deleteAgent(req.params.id, req.params.aid)) {
       res.status(404).json({ error: 'Agent not found' });
       return;
     }
     res.status(204).end();
+  });
+
+  // --- Teammates (list other agents the given agent can message) ---
+  router.get('/projects/:id/agents/:aid/teammates', (req: Request, res: Response) => {
+    const all = storage.listAgents(req.params.id);
+    const self = all.find(a => a.id === req.params.aid);
+    if (!self) { res.status(404).json({ error: 'Agent not found' }); return; }
+    const teammates = all
+      .filter(a => a.id !== self.id)
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        role: a.role,
+        cli: a.cli,
+        status: ptyManager.isAgentRunning(a.id) ? 'running' : 'stopped',
+      }));
+    res.json({ self: { id: self.id, name: self.name, role: self.role }, teammates });
+  });
+
+  // --- Agent-to-agent messaging (called by MCP server) ---
+  router.post('/projects/:id/messages', (req: Request, res: Response) => {
+    const { fromAgentId, fromAgentName, target, message } = req.body || {};
+    if (!fromAgentId || !target || !message) {
+      res.status(400).json({ error: 'fromAgentId, target, and message are required' });
+      return;
+    }
+
+    const agents = storage.listAgents(req.params.id);
+    const sender = agents.find(a => a.id === fromAgentId);
+    if (!sender) { res.status(404).json({ error: 'Sender agent not found in this project' }); return; }
+
+    // Resolve target: match by name case-insensitively, excluding self
+    const targetNorm = String(target).trim().toLowerCase();
+    const matches = agents.filter(a => a.id !== sender.id && a.name.toLowerCase() === targetNorm);
+    if (matches.length === 0) {
+      // Try a more forgiving match: name contains target or role contains target
+      const fuzzy = agents.filter(a =>
+        a.id !== sender.id &&
+        (a.name.toLowerCase().includes(targetNorm) || (a.role || '').toLowerCase().includes(targetNorm))
+      );
+      if (fuzzy.length === 0) {
+        res.status(404).json({ error: `No teammate named "${target}" in this project` });
+        return;
+      }
+      if (fuzzy.length > 1) {
+        res.status(400).json({
+          error: `Ambiguous target "${target}" — matches multiple agents: ${fuzzy.map(a => a.name).join(', ')}`,
+        });
+        return;
+      }
+      matches.push(fuzzy[0]);
+    }
+    if (matches.length > 1) {
+      res.status(400).json({
+        error: `Multiple agents named "${target}" — rename one to disambiguate: ${matches.map(a => `${a.name} (${a.id.slice(0,8)})`).join(', ')}`,
+      });
+      return;
+    }
+
+    const recipient = matches[0];
+    const fromName = fromAgentName || sender.name;
+    const delivered = ptyManager.injectMessage(recipient.id, fromName, String(message));
+
+    activity.pushEvent({
+      projectId: req.params.id,
+      agentId: sender.id,
+      agentName: sender.name,
+      event: 'agent:message',
+      detail: `${fromName} → ${recipient.name}: ${String(message).slice(0, 120)}`,
+      fromAgent: fromName,
+      toAgent: recipient.name,
+      message: String(message),
+    });
+
+    res.json({
+      delivered,
+      toAgentId: recipient.id,
+      toAgentName: recipient.name,
+    });
   });
 
   router.post('/projects/:id/agents/:aid/start', (req: Request, res: Response) => {

@@ -22,6 +22,7 @@ Termhive solves this with a browser-based dashboard and a persistent knowledge l
 - **Terminal streaming** — Real xterm.js terminals with live PTY via WebSocket
 - **Split view** — Tmux-like recursive splitting with draggable dividers, per-project persistent layouts
 - **Shared content** — Centralized file store with auto `--add-dir` / `--include-directories` for all supported CLIs
+- **Agent messaging** — Agents in the same project can message each other via MCP. Tell one agent "notify backend I'm done" and the message appears in the backend agent's terminal.
 - **Project Wiki** — Persistent wiki per project, inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern
 - **Activity feed** — Real-time file watcher on shared content + agent lifecycle events
 - **Auto instruction files** — Generates `CLAUDE.md` / `AGENTS.md` in each agent's cwd with shared content and wiki paths
@@ -117,6 +118,50 @@ Shared content files are stored in `~/.termhive/shared_content/[project-name]/`.
 Instruction files are auto-generated in each agent's working directory with paths to both shared content and wiki.
 
 All agents can read/write shared files, and the Termhive web UI reflects changes in real-time via file watching.
+
+## Agent Messaging
+
+Agents in the same project can send messages to each other. When you ask one agent to notify a teammate, it calls an MCP tool that delivers the message to the recipient's terminal as if the user had typed it.
+
+### How it works
+
+1. When an agent starts, Termhive registers a session-scoped MCP server exposing two tools: `message_agent(target, message)` and `list_teammates()`.
+2. `CLAUDE.md` / `AGENTS.md` is auto-updated with a **Teammates** section listing other agents in the project (names, CLIs, roles).
+3. When you say something like *"tell backend the API is done"*, the agent maps it to `message_agent(target="backend", message="API is done")`.
+4. Termhive writes the message into the target agent's PTY as `[Message from Frontend]: API is done`, so the target's LLM sees it as fresh user input.
+
+### Example
+
+Talking to the Frontend agent:
+
+```
+> Tell backend the auth flow is complete, the spec is in shared/auth-spec.md
+
+[Frontend uses message_agent tool]
+→ Message delivered to backend.
+```
+
+Backend's terminal automatically receives:
+
+```
+[Message from Frontend]: the auth flow is complete, the spec is in shared/auth-spec.md
+```
+
+### Supported CLIs
+
+| CLI | MCP Support | Mechanism |
+|-----|-------------|-----------|
+| Claude Code | ✅ | `--mcp-config <path>` flag (session-scoped, does not touch `~/.claude.json`) |
+| Codex CLI | ✅ | Per-agent entry in `~/.codex/config.toml` keyed by agent id |
+| Gemini CLI | ❌ | Not yet — no stable user-level MCP config |
+| OpenCode | ❌ | Not yet |
+
+### Design notes
+
+- **Session-scoped, no global pollution** — Claude agents get a per-agent MCP config file at `~/.termhive/mcp-configs/<agentId>.json`. Your personal MCP setup in `~/.claude.json` is never modified.
+- **Fuzzy addressing** — Target match is case-insensitive and falls back to partial name/role matching, so *"tell the backend"* resolves even if the agent is named `Backend Team`.
+- **One-way notifications** — Messages don't block. If you need a reply, the recipient agent calls `message_agent` back.
+- **Activity feed integration** — Every message shows up in the project's Activity Feed as `Frontend → Backend: ...`.
 
 ## Architecture
 
