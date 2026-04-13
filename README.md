@@ -1,19 +1,29 @@
 # Termhive
 
-A web-based management platform for coding CLI agents (Claude Code, Codex CLI, Gemini CLI, OpenCode). Think of it as **tmux for coding agents** with a web UI, project organization, shared content, and a persistent project wiki.
+**The human-driven multi-agent dashboard.**
+
+Termhive is a web-based control center for coding CLI agents (Claude Code, Codex, Gemini, OpenCode). While autonomous agent platforms hand the steering wheel to AI, Termhive keeps you in the driver's seat: see every agent's screen in one window, coordinate them manually, and intervene the moment something goes sideways.
+
+Think of it as **tmux for coding agents** — with a web UI, project wiki, shared content, and MCP-based agent messaging.
 
 https://github.com/user-attachments/assets/8c95c54b-5c1e-471e-9411-6150993b886b
 
-## Why
+## Why "human-driven"?
 
-When running multiple coding agents simultaneously across different projects:
-- Too many terminal windows, can't find which is which
-- No easy way to share context between agents
-- No overview of what each agent is working on
-- Can't manage agents from mobile/remote
-- Agents forget everything between sessions — no persistent project knowledge
+Autonomous agents are seductive in a demo. In practice they drift, burn tokens, and silently break things. I shipped two autonomous-agent harnesses before this one — both worked until they didn't, and the "didn't" was expensive to clean up.
 
-Termhive solves this with a browser-based dashboard and a persistent knowledge layer.
+Termhive is the opposite bet. You run 2–7 agents in parallel, each doing real work, but **you stay in the loop on every one**. No hidden decisions, no runaway loops, no "come back tomorrow and hope it went well."
+
+### The problems it actually solves
+
+- **Too many terminal windows** — can't find which agent is doing what
+- **No easy way to share context** between agents working on the same project
+- **No persistent project knowledge** — agents forget everything between sessions
+- **No cross-agent coordination** — you end up copy-pasting between windows
+- **Can't manage agents from mobile / remote** — you're stuck at your desk
+- **Autonomous tools hide too much** — when they go wrong, you find out too late
+
+Termhive gives you a browser-based dashboard, a per-project wiki, shared content folders, and native agent-to-agent messaging — all while you stay in control of every prompt.
 
 ## Features
 
