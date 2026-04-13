@@ -131,6 +131,8 @@ All agents can read/write shared files, and the Termhive web UI reflects changes
 
 ## Agent Messaging
 
+![Agent Messaging](send_message.png)
+
 Agents in the same project can send messages to each other. When you ask one agent to notify a teammate, it calls an MCP tool that delivers the message to the recipient's terminal as if the user had typed it.
 
 ### How it works
