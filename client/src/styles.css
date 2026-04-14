@@ -312,6 +312,47 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 0 7px;
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+/* WebKit (Chrome / Edge / Safari) — match terminal scrollbar style but slightly thinner */
+.sidebar-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+.sidebar-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.sidebar-list::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+[data-theme="light"] .sidebar-list {
+  scrollbar-color: rgba(55, 53, 47, 0.18) transparent;
+}
+
+[data-theme="light"] .sidebar-list::-webkit-scrollbar-thumb {
+  background: rgba(55, 53, 47, 0.18);
+}
+
+[data-theme="light"] .sidebar-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(55, 53, 47, 0.32);
+}
+
+[data-theme="light"] .sidebar-list::-webkit-scrollbar-thumb:active {
+  background: rgba(55, 53, 47, 0.45);
 }
 
 .sidebar-project {
