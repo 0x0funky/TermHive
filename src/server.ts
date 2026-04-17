@@ -78,6 +78,31 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
+// --- Graceful shutdown: kill all PTY sessions before exit ---
+function gracefulShutdown(signal: string) {
+  console.log(`[server] ${signal} received — killing all PTY sessions...`);
+  for (const agentId of ptyManager.getRunningAgentIds()) {
+    try { ptyManager.stopAgent(agentId); } catch { /* best-effort */ }
+  }
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGHUP', () => gracefulShutdown('SIGHUP'));
+if (process.platform === 'win32') {
+  process.on('SIGBREAK', () => gracefulShutdown('SIGBREAK'));
+}
+
+// --- Startup cleanup: reset stale "running" agents from previous crashes ---
+for (const project of storage.listProjects()) {
+  for (const agent of storage.listAgents(project.id)) {
+    if (agent.status === 'running') {
+      storage.updateAgent(project.id, agent.id, { status: 'stopped', pid: undefined });
+      console.log(`[server] Reset stale agent: ${agent.name} (${agent.id.slice(0, 8)})`);
+    }
+  }
+}
+
 // WebSocket handling
 wss.on('connection', (ws) => {
   clients.add(ws);
@@ -93,6 +118,12 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'terminal:attach': {
+        // Fix: remove existing listener before adding new one (prevents leak on re-attach)
+        const existing = agentListeners.get(msg.agentId);
+        if (existing) {
+          ptyManager.removeOutputListener(msg.agentId, existing);
+        }
+
         const listener = (data: string) => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
