@@ -44,39 +44,48 @@ export function watchProject(projectId: string, projectName: string) {
 
   const watcher = watch(dir, {
     ignoreInitial: true,
-    depth: 0,
+    // Allow nested subfolders (up to 5 levels deep to avoid runaway watchers on symlink loops)
+    depth: 5,
   });
 
+  // Convert full filesystem path to shared-content-relative path with forward slashes
+  const toRelative = (filePath: string): string =>
+    path.relative(dir, filePath).replace(/\\/g, '/');
+
+  // Skip hidden files/folders at any level (e.g. ".git", "subfolder/.DS_Store")
+  const isHidden = (relPath: string): boolean =>
+    relPath.split('/').some(seg => seg.startsWith('.'));
+
   watcher.on('add', (filePath: string) => {
-    const filename = path.basename(filePath);
-    if (filename.startsWith('.')) return;
-    console.log(`[activity] File created: ${filename}`);
+    const rel = toRelative(filePath);
+    if (!rel || isHidden(rel)) return;
+    console.log(`[activity] File created: ${rel}`);
     pushEvent({
       projectId,
       event: 'content:created',
-      detail: `File created: ${filename}`,
+      detail: `File created: ${rel}`,
     });
   });
 
   watcher.on('change', (filePath: string) => {
-    const filename = path.basename(filePath);
-    if (filename.startsWith('.')) return;
-    console.log(`[activity] File modified: ${filename}`);
+    const rel = toRelative(filePath);
+    if (!rel || isHidden(rel)) return;
+    console.log(`[activity] File modified: ${rel}`);
     pushEvent({
       projectId,
       event: 'content:modified',
-      detail: `File modified: ${filename}`,
+      detail: `File modified: ${rel}`,
     });
   });
 
   watcher.on('unlink', (filePath: string) => {
-    const filename = path.basename(filePath);
-    if (filename.startsWith('.')) return;
-    console.log(`[activity] File deleted: ${filename}`);
+    const rel = toRelative(filePath);
+    if (!rel || isHidden(rel)) return;
+    console.log(`[activity] File deleted: ${rel}`);
     pushEvent({
       projectId,
       event: 'content:deleted',
-      detail: `File deleted: ${filename}`,
+      detail: `File deleted: ${rel}`,
     });
   });
 

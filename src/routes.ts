@@ -203,7 +203,7 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     res.json(storage.listContent(req.params.id));
   });
 
-  router.get('/projects/:id/content/:filename', (req: Request, res: Response) => {
+  router.get('/projects/:id/content/:filename(*)', (req: Request, res: Response) => {
     const item = storage.getContent(req.params.id, req.params.filename);
     if (!item) { res.status(404).json({ error: 'Content not found' }); return; }
     res.json(item);
@@ -218,7 +218,7 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     res.status(201).json(item);
   });
 
-  router.put('/projects/:id/content/:filename', (req: Request, res: Response) => {
+  router.put('/projects/:id/content/:filename(*)', (req: Request, res: Response) => {
     const { content } = req.body;
     const item = storage.updateContent(req.params.id, req.params.filename, content || '');
     if (!item) { res.status(404).json({ error: 'Content not found' }); return; }
@@ -226,7 +226,7 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     res.json(item);
   });
 
-  router.delete('/projects/:id/content/:filename', (req: Request, res: Response) => {
+  router.delete('/projects/:id/content/:filename(*)', (req: Request, res: Response) => {
     if (!storage.deleteContent(req.params.id, req.params.filename)) {
       res.status(404).json({ error: 'Content not found' });
       return;

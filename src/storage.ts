@@ -156,20 +156,37 @@ export function listContent(projectId: string): SharedContent[] {
   if (!data) return [];
   const dir = sharedDir(data.project.name);
   if (!fs.existsSync(dir)) return [];
-  const files = fs.readdirSync(dir).filter(f => !f.startsWith('.'));
-  return files.map(f => {
-    const filePath = path.join(dir, f);
-    const stat = fs.statSync(filePath);
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return {
-      id: f,
-      projectId,
-      filename: f,
-      content,
-      createdBy: 'user',
-      updatedAt: stat.mtime.toISOString(),
-    };
-  });
+  // Recurse into subdirectories so nested files are listed with relative paths.
+  // Filenames are normalized to forward-slashes for cross-platform consistency.
+  const results: SharedContent[] = [];
+  const readDir = (d: string, prefix: string) => {
+    const entries = fs.readdirSync(d, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const relative = prefix ? prefix + '/' + entry.name : entry.name;
+      const fullPath = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        readDir(fullPath, relative);
+      } else if (entry.isFile()) {
+        try {
+          const stat = fs.statSync(fullPath);
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          results.push({
+            id: relative,
+            projectId,
+            filename: relative,
+            content,
+            createdBy: 'user',
+            updatedAt: stat.mtime.toISOString(),
+          });
+        } catch {
+          // skip unreadable entries (permission denied, binary, etc.)
+        }
+      }
+    }
+  };
+  readDir(dir, '');
+  return results;
 }
 
 export function getContent(projectId: string, filename: string): SharedContent | null {
@@ -195,6 +212,8 @@ export function createContent(projectId: string, filename: string, content: stri
   const dir = sharedDir(data.project.name);
   ensureDir(dir);
   const filePath = path.join(dir, filename);
+  // Support nested filenames like "subfolder/file.md" by ensuring parent dir exists
+  ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, content, 'utf-8');
   const stat = fs.statSync(filePath);
   return {
