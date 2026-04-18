@@ -114,6 +114,11 @@ export default function Terminal({ agentId, send, wsRef, onFocus, focused }: Pro
     // Allow browser paste/copy and Termhive app shortcuts to reach the window handler
     // even when xterm has focus. Returning false tells xterm to skip the key; the
     // browser still dispatches keydown to window listeners (capture or otherwise).
+    //
+    // Escape is intentionally NOT returned false here — xterm must forward ESC to
+    // the terminal program (Claude Code interrupt, vim, etc.). When the palette
+    // is open the palette input has focus instead of xterm, so this handler
+    // doesn't even fire for that case.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
       const mod = e.ctrlKey || e.metaKey;
@@ -123,7 +128,6 @@ export default function Terminal({ agentId, send, wsRef, onFocus, focused }: Pro
       if (mod && (e.key === 'k' || e.key === 'K')) return false;       // palette
       if (mod && e.key === '/') return false;                          // palette (alt)
       if (mod && /^[1-9]$/.test(e.key)) return false;                  // agent focus
-      if (e.key === 'Escape') return false;                            // close palette
       return true;
     });
 
