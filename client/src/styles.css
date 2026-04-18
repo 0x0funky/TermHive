@@ -916,8 +916,9 @@ input, select, textarea { font-family: inherit; }
 }
 
 .terminal-container .xterm-helper-textarea {
+  /* Keep invisible but still able to receive focus + paste events.
+     `pointer-events: none` previously broke right-click → Paste routing. */
   opacity: 0 !important;
-  pointer-events: none !important;
   z-index: -1 !important;
 }
 

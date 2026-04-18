@@ -151,10 +151,31 @@ export default function Terminal({ agentId, send, wsRef, onFocus, focused }: Pro
     const ws = wsRef.current;
     ws?.addEventListener('message', handler);
 
-    // Notify parent when terminal gets focus
+    // Notify parent when terminal gets focus; also ensure the hidden xterm
+    // textarea gets focus when the user clicks so keyboard + paste routes work.
+    const container = containerRef.current;
     const handleFocusIn = () => onFocus?.();
-    containerRef.current.addEventListener('focusin', handleFocusIn);
-    containerRef.current.addEventListener('mousedown', handleFocusIn);
+    const handleMouseDown = () => {
+      onFocus?.();
+      // Defer so the click-to-focus on the xterm textarea happens first,
+      // then we confirm/re-apply focus in case something else stole it.
+      setTimeout(() => termRef.current?.focus(), 0);
+    };
+    container.addEventListener('focusin', handleFocusIn);
+    container.addEventListener('mousedown', handleMouseDown);
+
+    // Explicit paste handler — works for both Ctrl/Cmd+V and right-click →
+    // Paste. xterm.paste() routes the text into the terminal input stream as
+    // if typed, handling bracketed paste mode when enabled by the server.
+    const handlePaste = (ev: ClipboardEvent) => {
+      const text = ev.clipboardData?.getData('text');
+      if (text && termRef.current) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        termRef.current.paste(text);
+      }
+    };
+    container.addEventListener('paste', handlePaste);
 
     // Fit on resize — debounced to avoid thrashing during drag
     let fitTimeout: ReturnType<typeof setTimeout>;
@@ -162,13 +183,14 @@ export default function Terminal({ agentId, send, wsRef, onFocus, focused }: Pro
       clearTimeout(fitTimeout);
       fitTimeout = setTimeout(() => fit.fit(), 50);
     });
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(container);
 
     return () => {
       clearTimeout(fitTimeout);
       clearTimeout(scrollTimer);
-      containerRef.current?.removeEventListener('focusin', handleFocusIn);
-      containerRef.current?.removeEventListener('mousedown', handleFocusIn);
+      container.removeEventListener('focusin', handleFocusIn);
+      container.removeEventListener('mousedown', handleMouseDown);
+      container.removeEventListener('paste', handlePaste);
       send({ type: 'terminal:detach', agentId });
       ws?.removeEventListener('message', handler);
       resizeObserver.disconnect();
