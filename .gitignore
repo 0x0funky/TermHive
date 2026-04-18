@@ -4,3 +4,6 @@ dist/
 .DS_Store
 Thumbs.db
 .design-extract/
+demo-video/frames/
+demo-video/recordings/
+demo-video/node_modules/

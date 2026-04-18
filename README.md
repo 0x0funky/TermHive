@@ -30,19 +30,30 @@ Termhive gives you a browser-based dashboard, a per-project wiki, shared content
 - **Multi-vendor** — Claude Code, Codex CLI, Gemini CLI, OpenCode in one UI
 - **Project organization** — Group agents by project, each with its own config
 - **Terminal streaming** — Real xterm.js terminals with live PTY via WebSocket
-- **Split view** — Tmux-like recursive splitting with draggable dividers, per-project persistent layouts
-- **Shared content** — Centralized file store with auto `--add-dir` / `--include-directories` for all supported CLIs
-- **Agent messaging** — Agents in the same project can message each other via MCP. Tell one agent "notify backend I'm done" and the message appears in the backend agent's terminal.
+- **Five terminal layouts** — Single, 2-up, 3-up, **Grid** (tmux-style recursive splits with per-pane split/close + drag-to-swap + draggable dividers), and **Canvas** (free-form drag & 8-way resize, positions persist per project)
+- **Command palette** — `⌘K` / `Ctrl+K` to jump to agents, switch layouts, change theme, run batch actions. `⌘1–5` / `Ctrl+1-5` instantly focuses agent *N* (keeps working even when the terminal has focus).
+- **Collapsible, resizable sidebar** — Drag the right edge (180–420px), or hit the toggle to hide it completely
+- **4 themes** — Dark, Light, Amber Hive, Monochrome. Claude Code ANSI palette matched for both light and dark.
+- **Shared content** — Centralized file store with auto `--add-dir` / `--include-directories` for all supported CLIs. Folder tree + editor in the UI.
+- **Agent messaging** — Agents in the same project can message each other via MCP. Tell one agent "notify backend I'm done" and the message appears in the backend agent's terminal. Dedicated **Messages** tab shows the thread history with a composer.
 - **Project Wiki** — Persistent wiki per project, inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern
-- **Activity feed** — Real-time file watcher on shared content + agent lifecycle events
-- **Auto instruction files** — Generates `CLAUDE.md` / `AGENTS.md` in each agent's cwd with shared content and wiki paths
+- **Activity feed** — Real-time file watcher on shared content + agent lifecycle + message events, grouped by day with filter chips
+- **Per-agent color identity** — Deterministic hue + monogram for every agent so five panes are never a sea of sameness
+- **Auto instruction files** — Generates `CLAUDE.md` / `AGENTS.md` in each agent's cwd with shared content, wiki, and teammate paths
 - **Agent flags** — `--dangerously-skip-permissions` (Claude/OpenCode), `--remote-control` (Claude)
 - **Start/Stop All** — Batch control per project
-- **Light/Dark theme** — With Claude Code ANSI palette matching
-- **Usage monitor** — Claude & Codex rate limit tracking in sidebar
+- **Usage monitor** — Claude & Codex rate limit tracking (session + week) in sidebar
 - **Mobile responsive** — Slide-out sidebar, bottom agent tab bar, collapsible panels
-- **Active pane highlight** — Visual border on focused terminal pane (tmux-style)
 - **Lightweight** — JSON file storage, no database needed
+
+### Hive Dashboard (v2 redesign)
+
+The current UI is built around multi-agent panoramic viewing — **Grid** and **Canvas** modes are the differentiators:
+
+- **Grid** is a recursive split tree. Hover any pane to reveal split-right / split-down / close buttons. Every split has a live resize divider. Drag one pane's header onto another to swap their agents in-tree. Tree state persists per project.
+- **Canvas** is free-form. Drag any card's header to reposition; drag any of 8 edges/corners to resize. Each card has its own z-index (click to bring to front). Positions persist per project. A "Tile" button in the toolbar auto-arranges everything into a grid.
+
+All layouts (2-up / 3-up / Grid / Canvas) use pointer `movementX/Y` deltas and real container widths for resize math, so they feel precise regardless of display scale.
 
 ## Quick Start
 
