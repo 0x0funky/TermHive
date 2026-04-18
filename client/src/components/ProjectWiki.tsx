@@ -1,12 +1,14 @@
+/**
+ * Project Wiki panel — TOC on the left (metadata/core/agents/raw + recent log entries),
+ * article body on the right. Supports click-to-navigate internal markdown links.
+ */
+
 import { useState, useEffect } from 'react';
 import { marked } from 'marked';
 import * as api from '../api';
+import Ic from './Icons';
 
-// Configure marked for clean output
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
+marked.setOptions({ gfm: true, breaks: true });
 
 interface Props {
   projectId: string;
@@ -23,7 +25,6 @@ function timeAgo(timestamp: string): string {
   return days + 'd ago';
 }
 
-// Parse _log.md into entries
 function parseLog(content: string): { date: string; action: string; summary: string }[] {
   const entries: { date: string; action: string; summary: string }[] = [];
   const regex = /^## \[(\d{4}-\d{2}-\d{2})\]\s*(.+?)\s*\|\s*(.+)$/gm;
@@ -34,6 +35,22 @@ function parseLog(content: string): { date: string; action: string; summary: str
   return entries.reverse();
 }
 
+const WIKI_ICONS: Record<string, (props: { size?: number }) => JSX.Element> = {
+  book: Ic.book,
+  rules: Ic.hash,
+  log: Ic.activity,
+  doc: Ic.file,
+  user: Ic.user,
+};
+
+function pickIcon(name: string) {
+  if (name === '_index.md') return WIKI_ICONS.book;
+  if (name === '_schema.md') return WIKI_ICONS.rules;
+  if (name === '_log.md') return WIKI_ICONS.log;
+  if (name.startsWith('agents/')) return WIKI_ICONS.user;
+  return WIKI_ICONS.doc;
+}
+
 export default function ProjectWiki({ projectId }: Props) {
   const [initialized, setInitialized] = useState<boolean | null>(null);
   const [files, setFiles] = useState<api.SharedContent[]>([]);
@@ -42,7 +59,6 @@ export default function ProjectWiki({ projectId }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [logEntries, setLogEntries] = useState<{ date: string; action: string; summary: string }[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     setInitialized(null);
@@ -61,10 +77,11 @@ export default function ProjectWiki({ projectId }: Props) {
     const list = await api.listWikiFiles(projectId);
     setFiles(list);
     if (list.length > 0 && !selected) {
-      const def = list.find(f => f.filename === '_index.md') || list.find(f => f.filename === 'overview.md') || list[0];
+      const def = list.find(f => f.filename === '_index.md')
+        || list.find(f => f.filename === 'overview.md')
+        || list[0];
       setSelected(def.filename);
     }
-    // Load log entries
     try {
       const log = await api.getWikiFile(projectId, '_log.md');
       if (log) setLogEntries(parseLog(log.content));
@@ -91,186 +108,153 @@ export default function ProjectWiki({ projectId }: Props) {
     await api.updateWikiFile(projectId, selected, content);
     setSaving(false);
     setEditing(false);
-    // Reload log if we edited it
-    if (selected === '_log.md') {
-      setLogEntries(parseLog(content));
-    }
+    if (selected === '_log.md') setLogEntries(parseLog(content));
   };
 
   if (initialized === null) {
-    return <div className="empty-state">Loading...</div>;
+    return (
+      <div className="panel">
+        <div className="panel-empty">Loading…</div>
+      </div>
+    );
   }
 
   if (!initialized) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', maxWidth: 420 }}>
-          <h3 style={{ marginBottom: 8 }}>Project Wiki</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
-            Initialize a persistent wiki for this project.
-            AI agents will maintain architecture docs, API specs, decisions,
-            and progress — following Karpathy's LLM Wiki pattern.
-          </p>
-          <button className="primary" onClick={handleInit} style={{ padding: '6px 20px', fontSize: 13 }}>
-            Initialize Wiki
-          </button>
+      <div className="panel">
+        <div className="panel-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', maxWidth: 440, padding: 32 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12, color: 'var(--text-0)' }}>Project Wiki</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-1)', marginBottom: 20, lineHeight: 1.6 }}>
+              Initialize a persistent wiki for this project. AI agents will maintain architecture docs, API specs, decisions, and progress — following Karpathy's LLM Wiki pattern.
+            </p>
+            <button className="batch-btn primary" onClick={handleInit}>
+              <Ic.plus size={11} /> Initialize Wiki
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  const coreFiles = files.filter(f => !f.filename.startsWith('_') && !f.filename.includes('/'));
   const metaFiles = files.filter(f => f.filename.startsWith('_'));
+  const coreFiles = files.filter(f => !f.filename.startsWith('_') && !f.filename.includes('/'));
   const agentFiles = files.filter(f => f.filename.startsWith('agents/'));
   const rawFiles = files.filter(f => f.filename.startsWith('raw/'));
 
-  const handleFileSelect = (filename: string) => {
-    setSelected(filename);
-    if (window.innerWidth <= 768) setSidebarOpen(false);
-  };
+  const selectedFile = selected ? files.find(f => f.filename === selected) : null;
 
-  const FileItem = ({ f }: { f: api.SharedContent }) => (
-    <div
-      className={`memory-file-item ${selected === f.filename ? 'active' : ''}`}
-      onClick={() => handleFileSelect(f.filename)}
-    >
-      <span style={{ flex: 1 }}>
-        {f.filename.startsWith('_') ? f.filename : f.filename.replace(/^(agents|raw)\//, '')}
-      </span>
-      {f.updatedAt && (
-        <span style={{ fontSize: 10, color: 'var(--text-secondary)', flexShrink: 0 }}>
-          {timeAgo(f.updatedAt)}
-        </span>
-      )}
-    </div>
-  );
-
-  const goToIndex = () => handleFileSelect('_index.md');
+  const renderSection = (title: string, items: api.SharedContent[]) =>
+    items.length === 0 ? null : (
+      <>
+        <div className="wiki-sec-h">{title}</div>
+        {items.map(f => {
+          const IconC = pickIcon(f.filename);
+          const displayName = f.filename.replace(/^(agents|raw)\//, '');
+          return (
+            <button
+              key={f.filename}
+              className={'wiki-item' + (selected === f.filename ? ' active' : '')}
+              onClick={() => setSelected(f.filename)}
+            >
+              <div className="ic"><IconC size={12} /></div>
+              <div className="ln">{displayName}</div>
+              {f.updatedAt && <div className="tag">{timeAgo(f.updatedAt)}</div>}
+            </button>
+          );
+        })}
+      </>
+    );
 
   return (
-    <div className="memory-container">
-      <div className={`memory-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-        <div className="memory-section-title">Index</div>
-        {metaFiles.map(f => <FileItem key={f.filename} f={f} />)}
-
-        <div className="memory-section-title">Core</div>
-        {coreFiles.map(f => <FileItem key={f.filename} f={f} />)}
-
-        {agentFiles.length > 0 && (
-          <>
-            <div className="memory-section-title">Agents</div>
-            {agentFiles.map(f => <FileItem key={f.filename} f={f} />)}
-          </>
-        )}
-
-        {rawFiles.length > 0 && (
-          <>
-            <div className="memory-section-title">Raw</div>
-            {rawFiles.map(f => <FileItem key={f.filename} f={f} />)}
-          </>
-        )}
-
-        {/* Log timeline in sidebar */}
-        {logEntries.length > 0 && (
-          <>
-            <div className="memory-section-title" style={{ marginTop: 12 }}>Recent Activity</div>
-            <div className="memory-log-timeline">
-              {logEntries.slice(0, 10).map((entry, i) => (
-                <div key={i} className="memory-log-entry">
-                  <span className="memory-log-date">{entry.date}</span>
-                  <span className="memory-log-summary">{entry.summary}</span>
+    <div className="panel wiki-panel">
+      <div className="panel-h">
+        <div className="panel-h-l">
+          <h2>Project Wiki</h2>
+          <span className="panel-sub">
+            Long-term memory · {files.length} {files.length === 1 ? 'page' : 'pages'}
+          </span>
+        </div>
+        <div className="panel-h-r">
+          {editing ? (
+            <>
+              <button className="chip" onClick={() => {
+                setEditing(false);
+                if (selected) api.getWikiFile(projectId, selected).then(i => { if (i) setContent(i.content); });
+              }}>Cancel</button>
+              <button className="chip primary" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          ) : (
+            selected && <button className="chip" onClick={() => setEditing(true)}>Edit</button>
+          )}
+        </div>
+      </div>
+      <div className="wiki-split">
+        <aside className="wiki-toc scroll">
+          {renderSection('Index', metaFiles)}
+          {renderSection('Core', coreFiles)}
+          {renderSection('Agents', agentFiles)}
+          {renderSection('Raw', rawFiles)}
+          {logEntries.length > 0 && (
+            <>
+              <div className="wiki-sec-h" style={{ marginTop: 12 }}>Recent Activity</div>
+              {logEntries.slice(0, 8).map((entry, i) => (
+                <div key={i} style={{ padding: '4px 10px', fontSize: 11, color: 'var(--text-2)', lineHeight: 1.4 }}>
+                  <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 10, color: 'var(--text-3)', marginRight: 6 }}>
+                    {entry.date}
+                  </span>
+                  {entry.summary}
                 </div>
               ))}
-              {logEntries.length > 10 && (
-                <div
-                  className="memory-file-item"
-                  onClick={() => setSelected('_log.md')}
-                  style={{ fontSize: 11, opacity: 0.6, textAlign: 'center' }}
-                >
-                  View all ({logEntries.length})
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="memory-content">
-        {selected ? (
-          <>
-            <div className="memory-content-header">
-              <div className="memory-content-header-left">
-                <button
-                  className="content-tree-toggle"
-                  onClick={() => setSidebarOpen(!sidebarOpen)}
-                  title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M2 3h10M2 7h10M2 11h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                  </svg>
-                </button>
-                {selected !== '_index.md' && (
-                  <span onClick={goToIndex} className="memory-back-btn" title="Back to Index">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path d="M8.75 3.5L5.25 7L8.75 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </span>
-                )}
-                <span style={{ fontWeight: 400, color: 'var(--text-primary)' }}>{selected}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {editing ? (
-                  <>
-                    <button onClick={handleSave} className="memory-edit-btn" disabled={saving}>
-                      {saving ? 'Saving...' : 'Save'}
-                    </button>
-                    <button onClick={() => {
-                      setEditing(false);
-                      api.getWikiFile(projectId, selected).then(item => {
-                        if (item) setContent(item.content);
-                      });
-                    }}>Cancel</button>
-                  </>
-                ) : (
-                  <button onClick={() => setEditing(true)} className="memory-edit-btn">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path d="M10.5 1.75L12.25 3.5M1.75 12.25L2.33 9.92L10.08 2.17C10.31 1.94 10.69 1.94 10.92 2.17L11.83 3.08C12.06 3.31 12.06 3.69 11.83 3.92L4.08 11.67L1.75 12.25Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Edit
-                  </button>
-                )}
-              </div>
-            </div>
-            {editing ? (
+            </>
+          )}
+        </aside>
+        <article className="wiki-article scroll">
+          {selected && selectedFile ? (
+            editing ? (
               <textarea
-                className="memory-editor"
+                className="sp-editor"
+                style={{ padding: 0, minHeight: 400 }}
                 value={content}
-                onChange={e => setContent(e.target.value)}
-                onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(); } }}
-              />
-            ) : (
-              <div
-                className="memory-rendered"
-                dangerouslySetInnerHTML={{ __html: marked(content) as string }}
-                onClick={(e) => {
-                  const target = e.target as HTMLElement;
-                  if (target.tagName === 'A') {
-                    e.preventDefault();
-                    const href = target.getAttribute('href') || '';
-                    if (href.endsWith('.md') && !href.startsWith('http')) {
-                      const currentDir = selected?.includes('/') ? selected.split('/').slice(0, -1).join('/') : '';
-                      const resolved = currentDir && !href.startsWith('/') ? currentDir + '/' + href : href;
-                      const found = files.find(f => f.filename === resolved) || files.find(f => f.filename === href);
-                      if (found) setSelected(found.filename);
-                    }
+                onChange={(e) => setContent(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                    e.preventDefault(); handleSave();
                   }
                 }}
               />
-            )}
-          </>
-        ) : (
-          <div className="empty-state">Select a page</div>
-        )}
+            ) : (
+              <>
+                <div className="wiki-crumb">Wiki · <span>{selected}</span></div>
+                <h1 className="wiki-title">{selected.replace(/\.md$/, '').replace(/^[_/]+/, '')}</h1>
+                {selectedFile.updatedAt && (
+                  <div className="wiki-meta">Last edited {timeAgo(selectedFile.updatedAt)}</div>
+                )}
+                <div
+                  className="wiki-body"
+                  dangerouslySetInnerHTML={{ __html: marked(content) as string }}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.tagName === 'A') {
+                      e.preventDefault();
+                      const href = target.getAttribute('href') || '';
+                      if (href.endsWith('.md') && !href.startsWith('http')) {
+                        const currentDir = selected.includes('/') ? selected.split('/').slice(0, -1).join('/') : '';
+                        const resolved = currentDir && !href.startsWith('/') ? currentDir + '/' + href : href;
+                        const found = files.find(f => f.filename === resolved) || files.find(f => f.filename === href);
+                        if (found) setSelected(found.filename);
+                      }
+                    }
+                  }}
+                />
+              </>
+            )
+          ) : (
+            <div className="panel-empty">Select a page</div>
+          )}
+        </article>
       </div>
     </div>
   );

@@ -8,12 +8,20 @@ interface Props {
   send: (msg: object) => void;
   wsRef: React.RefObject<WebSocket | null>;
   onFocus?: () => void;
+  /** When true, imperatively focus the xterm so keyboard input routes here. */
+  focused?: boolean;
 }
 
-export default function Terminal({ agentId, send, wsRef, onFocus }: Props) {
+export default function Terminal({ agentId, send, wsRef, onFocus, focused }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+
+  // When the `focused` prop flips to true (e.g. via Ctrl+1-5 or programmatic
+  // selection), route keyboard input to this xterm instance.
+  useEffect(() => {
+    if (focused) termRef.current?.focus();
+  }, [focused]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -103,10 +111,19 @@ export default function Terminal({ agentId, send, wsRef, onFocus }: Props) {
       send({ type: 'terminal:input', agentId, data });
     });
 
-    // Allow browser paste (Ctrl+V) to reach xterm
+    // Allow browser paste/copy and Termhive app shortcuts to reach the window handler
+    // even when xterm has focus. Returning false tells xterm to skip the key; the
+    // browser still dispatches keydown to window listeners (capture or otherwise).
     term.attachCustomKeyEventHandler((e) => {
-      if (e.ctrlKey && e.key === 'v') return false; // let browser handle paste
-      if (e.ctrlKey && e.key === 'c' && term.hasSelection()) return false; // let browser handle copy
+      if (e.type !== 'keydown') return true;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === 'v') return false;                          // paste
+      if (mod && e.key === 'c' && term.hasSelection()) return false;   // copy when selection
+      // Termhive global shortcuts — palette + agent focus
+      if (mod && (e.key === 'k' || e.key === 'K')) return false;       // palette
+      if (mod && e.key === '/') return false;                          // palette (alt)
+      if (mod && /^[1-9]$/.test(e.key)) return false;                  // agent focus
+      if (e.key === 'Escape') return false;                            // close palette
       return true;
     });
 
