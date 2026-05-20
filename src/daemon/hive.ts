@@ -206,7 +206,7 @@ function readClaudeReply(cwd: string, sinceMs: number): string | null {
   return reply || null;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * Dispatch a message to an agent and collect its reply. The core of the
@@ -276,4 +276,82 @@ export async function askAgentDispatch(
     ...base,
     reply: null,
   };
+}
+
+// ─────────────────────────── start_agent ───────────────────────────
+
+export interface StartAgentResult {
+  ok: boolean;
+  /** started | already-running | not-found | start-failed */
+  status: 'started' | 'already-running' | 'not-found' | 'start-failed';
+  projectName?: string;
+  agentName?: string;
+  cli?: string;
+  error?: string;
+}
+
+/**
+ * Wait until a freshly-started agent can accept injected input.
+ * Claude keys off its SessionStart lifecycle hook plus a settle buffer (the
+ * TUI and MCP servers need a moment after the session opens). Other CLIs have
+ * no hooks, so we fall back to a fixed boot delay.
+ */
+function waitForAgentReady(agentId: string, cli: string): Promise<void> {
+  if (cli !== 'claude') return sleep(16_000);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(floorTimer);
+      hookEvents.off('hook', onHook);
+      resolve();
+    };
+    const onHook = (id: string, event: string) => {
+      if (id !== agentId) return;
+      if (event === 'SessionStart' || event === 'UserPromptSubmit' || event === 'Stop') {
+        hookEvents.off('hook', onHook);
+        clearTimeout(floorTimer);
+        setTimeout(finish, 12_000); // let the TUI + MCP servers settle
+      }
+    };
+    // Floor: proceed even if no hook ever arrives (slow boot / hooks disabled).
+    const floorTimer = setTimeout(finish, 45_000);
+    hookEvents.on('hook', onHook);
+  });
+}
+
+/**
+ * Start a stopped agent and wait until it is ready to be messaged. `doStart`
+ * is injected by the daemon (it owns the pty-manager status callback).
+ */
+export async function startAgentDispatch(
+  projectRef: string,
+  agentRef: string,
+  doStart: (agent: Agent) => boolean,
+): Promise<StartAgentResult> {
+  const project = resolveProject(projectRef);
+  if (!project) {
+    return { ok: false, status: 'not-found', error: `No project matching "${projectRef}".` };
+  }
+  const agent = resolveAgent(project.id, agentRef);
+  if (!agent) {
+    return {
+      ok: false,
+      status: 'not-found',
+      projectName: project.name,
+      error: `No agent matching "${agentRef}" in ${project.name}.`,
+    };
+  }
+
+  const base = { projectName: project.name, agentName: agent.name, cli: agent.cli };
+  if (ptyManager.isAgentRunning(agent.id)) {
+    return { ok: true, status: 'already-running', ...base };
+  }
+  if (!doStart(agent)) {
+    return { ok: false, status: 'start-failed', ...base, error: 'Failed to spawn the agent process.' };
+  }
+
+  await waitForAgentReady(agent.id, agent.cli);
+  return { ok: true, status: 'started', ...base };
 }

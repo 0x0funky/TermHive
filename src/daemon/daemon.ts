@@ -19,7 +19,7 @@ import * as storage from '../storage.js';
 import { hookEventToStatus } from '../hook-config.js';
 import { Orchestrator } from './orchestrator.js';
 import { hookEvents } from './hook-events.js';
-import { orgSnapshot, askAgentDispatch } from './hive.js';
+import { orgSnapshot, askAgentDispatch, startAgentDispatch } from './hive.js';
 import {
   DAEMON_HOST,
   DAEMON_PORT,
@@ -275,6 +275,33 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
         return;
       }
       const result = await askAgentDispatch(project, agent, message);
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false, status: 'not-found',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  // POST /org/start-agent — boot a stopped agent and wait until it is ready
+  if (httpReq.method === 'POST' && route === '/org/start-agent') {
+    try {
+      const body = JSON.parse((await readBody(httpReq)) || '{}');
+      const project = String(body.project || '').trim();
+      const agent = String(body.agent || '').trim();
+      if (!project || !agent) {
+        sendJson(res, 400, {
+          ok: false, status: 'not-found',
+          error: 'project and agent are required',
+        });
+        return;
+      }
+      const result = await startAgentDispatch(
+        project, agent,
+        (ag) => ptyManager.startAgent(ag, onAgentStatus),
+      );
       sendJson(res, 200, result);
     } catch (err) {
       sendJson(res, 500, {

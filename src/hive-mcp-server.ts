@@ -62,6 +62,15 @@ interface AskResult {
   error?: string;
 }
 
+interface StartResult {
+  ok: boolean;
+  status: string;
+  agentName?: string;
+  projectName?: string;
+  cli?: string;
+  error?: string;
+}
+
 /** Plain fetch with an upper-bound timeout so a dead daemon never hangs us. */
 async function daemonFetch(
   url: string,
@@ -156,6 +165,23 @@ async function main() {
         },
       },
       {
+        name: 'start_agent',
+        description:
+          'Start a stopped agent so it can be reached. Call this before ' +
+          'ask_agent when the target agent is not running. Starting a Claude ' +
+          'agent resumes its previous session, so it keeps the context of what ' +
+          'it was working on. Booting takes roughly 15-40 seconds; this tool ' +
+          'waits until the agent is ready before returning.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project: { type: 'string', description: 'Project name or id.' },
+            agent: { type: 'string', description: 'Agent name, role, or id.' },
+          },
+          required: ['project', 'agent'],
+        },
+      },
+      {
         name: 'ask_agent',
         description:
           'Send a question or instruction to one agent and wait for its reply. ' +
@@ -235,6 +261,35 @@ async function main() {
         return text(`${ag.name} (${ag.cli}${role}) in ${proj.name} — status: ${ag.status}`);
       }
 
+      if (name === 'start_agent') {
+        const project = String(a.project || '').trim();
+        const agent = String(a.agent || '').trim();
+        if (!project || !agent) return err('project and agent are required.');
+        const res = await daemonFetch(
+          `${args.daemonUrl}/org/start-agent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project, agent }),
+          },
+          90_000,
+        );
+        const body = (await res.json().catch(() => ({}))) as StartResult;
+        const who = `${body.agentName || agent} (${body.projectName || project})`;
+        switch (body.status) {
+          case 'started':
+            return text(`${who} is now running and ready — you can ask_agent it now.`);
+          case 'already-running':
+            return text(`${who} was already running.`);
+          case 'start-failed':
+            return err(body.error || `Failed to start ${who}.`);
+          case 'not-found':
+            return err(body.error || `Could not find agent "${agent}" in "${project}".`);
+          default:
+            return err(body.error || `start_agent failed (${body.status || 'unknown'}).`);
+        }
+      }
+
       if (name === 'ask_agent') {
         const project = String(a.project || '').trim();
         const agent = String(a.agent || '').trim();
@@ -278,7 +333,10 @@ async function main() {
               `for ${body.cli} agents — check its terminal for the response.`,
             );
           case 'not-running':
-            return err(`${who} is not running. Start it before asking.`);
+            return text(
+              `${who} is not running. Call start_agent on it first (that resumes ` +
+              `its previous session), then ask_agent again.`,
+            );
           case 'not-found':
             return err(body.error || `Could not find agent "${agent}" in "${project}".`);
           default:
