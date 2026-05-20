@@ -166,6 +166,14 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
         return reply({ preview: ptyManager.getAgentPreview(req.agentId) });
       case 'agent:runningIds':
         return reply({ ids: ptyManager.getRunningAgentIds() });
+      case 'agent:statuses': {
+        // Full fine-grained status map. Any pty-alive agent without a status
+        // engine entry defaults to 'running'.
+        const statuses: Record<string, string> = {};
+        for (const id of ptyManager.getRunningAgentIds()) statuses[id] = 'running';
+        for (const [id, s] of agentStatus) statuses[id] = s;
+        return reply({ statuses });
+      }
       default:
         return fail('Unknown op');
     }

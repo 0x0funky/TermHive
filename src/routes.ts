@@ -14,14 +14,14 @@ export function createRouter(
 ) {
   const router = Router();
 
-  /** Fetch the set of currently-running agent ids from the daemon.
+  /** Fetch the fine-grained agent status map from the daemon.
    *  If the daemon is unreachable, nothing is running (it owns every PTY). */
-  async function runningIds(): Promise<Set<string>> {
+  async function agentStatuses(): Promise<Record<string, string>> {
     try {
-      const r = await daemon.request('agent:runningIds');
-      return new Set(r.ids);
+      const r = await daemon.request('agent:statuses');
+      return r.statuses;
     } catch {
-      return new Set();
+      return {};
     }
   }
 
@@ -58,9 +58,9 @@ export function createRouter(
   // --- Agents ---
   router.get('/projects/:id/agents', async (req: Request, res: Response) => {
     const agents = storage.listAgents(req.params.id);
-    const running = await runningIds();
+    const statuses = await agentStatuses();
     for (const agent of agents) {
-      agent.status = running.has(agent.id) ? 'running' : 'stopped';
+      agent.status = (statuses[agent.id] as typeof agent.status) || 'stopped';
     }
     res.json(agents);
   });
@@ -117,7 +117,7 @@ export function createRouter(
     const all = storage.listAgents(req.params.id);
     const self = all.find(a => a.id === req.params.aid);
     if (!self) { res.status(404).json({ error: 'Agent not found' }); return; }
-    const running = await runningIds();
+    const statuses = await agentStatuses();
     const teammates = all
       .filter(a => a.id !== self.id)
       .map(a => ({
@@ -125,7 +125,7 @@ export function createRouter(
         name: a.name,
         role: a.role,
         cli: a.cli,
-        status: running.has(a.id) ? 'running' : 'stopped',
+        status: statuses[a.id] || 'stopped',
       }));
     res.json({ self: { id: self.id, name: self.name, role: self.role }, teammates });
   });

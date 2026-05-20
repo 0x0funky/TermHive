@@ -24,6 +24,7 @@ export type DaemonRequest =
   | { id: string; op: 'agent:isRunning'; agentId: string }
   | { id: string; op: 'agent:preview'; agentId: string }
   | { id: string; op: 'agent:runningIds' }
+  | { id: string; op: 'agent:statuses' }
   // --- Fire-and-forget commands ---
   | { op: 'terminal:attach'; agentId: string }
   | { op: 'terminal:detach'; agentId: string }
@@ -48,4 +49,5 @@ export interface DaemonRpcResults {
   'agent:isRunning': { running: boolean };
   'agent:preview': { preview: string };
   'agent:runningIds': { ids: string[] };
+  'agent:statuses': { statuses: Record<string, string> };
 }
