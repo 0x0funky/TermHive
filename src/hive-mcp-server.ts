@@ -104,6 +104,23 @@ interface BroadcastBody {
   skipped?: Array<{ projectName: string; agentName: string; reason: string }>;
 }
 
+interface CreateProjectBody {
+  ok: boolean;
+  status: string;
+  projectName?: string;
+  cwd?: string;
+  error?: string;
+}
+
+interface CreateAgentBody {
+  ok: boolean;
+  status: string;
+  projectName?: string;
+  agentName?: string;
+  cli?: string;
+  error?: string;
+}
+
 /** Plain fetch with an upper-bound timeout so a dead daemon never hangs us. */
 async function daemonFetch(
   url: string,
@@ -243,6 +260,55 @@ async function main() {
             },
           },
           required: ['project'],
+        },
+      },
+      {
+        name: 'create_project',
+        description:
+          'Create a new project (team). Needs a name and a working directory ' +
+          '(the project root — created automatically if it does not exist). ' +
+          'Use this when the user asks to set up a new team or project.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Project name, e.g. "MedVault".' },
+            cwd: {
+              type: 'string',
+              description: 'Project root directory (absolute path). Created if missing.',
+            },
+            description: {
+              type: 'string',
+              description: 'Optional short description of the project.',
+            },
+          },
+          required: ['name', 'cwd'],
+        },
+      },
+      {
+        name: 'create_agent',
+        description:
+          'Add an agent to a project. The agent is created stopped — call ' +
+          'start_agent afterwards to bring it online. Use this when the user ' +
+          'asks to add a team member or agent.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project: { type: 'string', description: 'Project name or id.' },
+            name: { type: 'string', description: 'Agent name, e.g. "Backend".' },
+            cli: {
+              type: 'string',
+              description: 'Which CLI runs this agent: claude, codex, gemini, or opencode.',
+            },
+            role: {
+              type: 'string',
+              description: 'Optional role label, e.g. "API & database".',
+            },
+            cwd: {
+              type: 'string',
+              description: 'Optional working directory; defaults to the project root.',
+            },
+          },
+          required: ['project', 'name', 'cli'],
         },
       },
       {
@@ -420,6 +486,62 @@ async function main() {
         const files = body.files || [];
         if (files.length === 0) return text(`${body.projectName} has no shared content files.`);
         return text(`${body.projectName} shared files:\n` + files.map((f) => `- ${f}`).join('\n'));
+      }
+
+      if (name === 'create_project') {
+        const projectName = String(a.name || '').trim();
+        const cwd = String(a.cwd || '').trim();
+        if (!projectName || !cwd) return err('name and cwd are both required.');
+        const res = await daemonFetch(
+          `${args.daemonUrl}/org/create-project`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: projectName,
+              cwd,
+              description: a.description ? String(a.description) : undefined,
+            }),
+          },
+          15_000,
+        );
+        const body = (await res.json().catch(() => ({}))) as CreateProjectBody;
+        if (body.status === 'created') {
+          return text(`Created project "${body.projectName}" at ${body.cwd}.`);
+        }
+        return err(body.error || `create_project failed (${body.status || 'unknown'}).`);
+      }
+
+      if (name === 'create_agent') {
+        const project = String(a.project || '').trim();
+        const agentName = String(a.name || '').trim();
+        const cli = String(a.cli || '').trim();
+        if (!project || !agentName || !cli) {
+          return err('project, name, and cli are all required.');
+        }
+        const res = await daemonFetch(
+          `${args.daemonUrl}/org/create-agent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              project,
+              name: agentName,
+              cli,
+              role: a.role ? String(a.role) : undefined,
+              cwd: a.cwd ? String(a.cwd) : undefined,
+            }),
+          },
+          15_000,
+        );
+        const body = (await res.json().catch(() => ({}))) as CreateAgentBody;
+        if (body.status === 'created') {
+          return text(
+            `Added agent "${body.agentName}" (${body.cli}) to ${body.projectName}. ` +
+            `It is stopped — call start_agent to bring it online.`,
+          );
+        }
+        return err(body.error || `create_agent failed (${body.status || 'unknown'}).`);
       }
 
       if (name === 'start_agent') {

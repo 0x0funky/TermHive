@@ -584,3 +584,138 @@ export async function broadcastDispatch(
 
   return { ok: true, projectName: scopeName, replies, skipped };
 }
+
+// ─────────────────────── create project / agent ───────────────────────
+
+export interface CreateProjectResult {
+  ok: boolean;
+  status: 'created' | 'exists' | 'error';
+  projectId?: string;
+  projectName?: string;
+  cwd?: string;
+  error?: string;
+}
+
+/** Create a new project/team. Ensures the working directory exists. */
+export function createProjectDispatch(
+  name: string,
+  cwd: string,
+  description?: string,
+): CreateProjectResult {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return { ok: false, status: 'error', error: 'A project name is required.' };
+  if (!cwd || !cwd.trim()) {
+    return { ok: false, status: 'error', error: 'A working directory (cwd) is required.' };
+  }
+
+  const existing = storage
+    .listProjects()
+    .find((p) => p.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) {
+    return {
+      ok: false,
+      status: 'exists',
+      projectId: existing.id,
+      projectName: existing.name,
+      error: `A project named "${trimmed}" already exists.`,
+    };
+  }
+
+  const resolved = path.resolve(expandHome(cwd.trim()));
+  try {
+    fs.mkdirSync(resolved, { recursive: true });
+  } catch (err) {
+    return {
+      ok: false,
+      status: 'error',
+      error: 'Could not create the directory: ' + (err instanceof Error ? err.message : String(err)),
+    };
+  }
+
+  const project = storage.createProject(trimmed, resolved, description?.trim() || undefined);
+  return {
+    ok: true,
+    status: 'created',
+    projectId: project.id,
+    projectName: project.name,
+    cwd: project.cwd,
+  };
+}
+
+export interface CreateAgentResult {
+  ok: boolean;
+  status: 'created' | 'exists' | 'not-found' | 'error';
+  projectName?: string;
+  agentId?: string;
+  agentName?: string;
+  cli?: string;
+  error?: string;
+}
+
+const VALID_CLIS = ['claude', 'codex', 'gemini', 'opencode'];
+
+/** Add an agent to a project. The agent is created stopped. */
+export function createAgentDispatch(
+  projectRef: string,
+  name: string,
+  cli: string,
+  role?: string,
+  cwd?: string,
+): CreateAgentResult {
+  const project = resolveProject(projectRef);
+  if (!project) {
+    return { ok: false, status: 'not-found', error: `No project matching "${projectRef}".` };
+  }
+  const trimmed = (name || '').trim();
+  if (!trimmed) {
+    return { ok: false, status: 'error', projectName: project.name, error: 'An agent name is required.' };
+  }
+  const cliNorm = (cli || '').trim().toLowerCase();
+  if (!VALID_CLIS.includes(cliNorm)) {
+    return {
+      ok: false,
+      status: 'error',
+      projectName: project.name,
+      error: `cli must be one of: ${VALID_CLIS.join(', ')}.`,
+    };
+  }
+
+  const dup = storage
+    .listAgents(project.id)
+    .find((a) => a.name.toLowerCase() === trimmed.toLowerCase());
+  if (dup) {
+    return {
+      ok: false,
+      status: 'exists',
+      projectName: project.name,
+      agentId: dup.id,
+      agentName: dup.name,
+      error: `Project "${project.name}" already has an agent named "${trimmed}".`,
+    };
+  }
+
+  let agentCwd = project.cwd;
+  if (cwd && cwd.trim()) {
+    agentCwd = path.resolve(expandHome(cwd.trim()));
+    try { fs.mkdirSync(agentCwd, { recursive: true }); } catch { /* best-effort */ }
+  }
+
+  const agent = storage.createAgent(
+    project.id,
+    trimmed,
+    cliNorm as Agent['cli'],
+    agentCwd,
+    role?.trim() || undefined,
+  );
+  if (!agent) {
+    return { ok: false, status: 'error', projectName: project.name, error: 'Failed to create the agent.' };
+  }
+  return {
+    ok: true,
+    status: 'created',
+    projectName: project.name,
+    agentId: agent.id,
+    agentName: agent.name,
+    cli: agent.cli,
+  };
+}

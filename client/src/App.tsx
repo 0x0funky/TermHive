@@ -96,6 +96,11 @@ export default function App() {
     if (msg.type === 'content:updated') {
       setContentRefresh((n) => n + 1);
     }
+    if (msg.type === 'org:changed') {
+      // The orchestrator created/changed a project or agent — refresh the sidebar.
+      loadProjects();
+      if (selectedProjectId) loadAgents(selectedProjectId);
+    }
     if (msg.type === 'agent:status' && msg.agentId && msg.status) {
       setAgents((prev) => {
         const next = new Map(prev);

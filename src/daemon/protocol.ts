@@ -88,7 +88,8 @@ export type DaemonMessage =
   | { kind: 'event'; event: 'terminal:output'; agentId: string; data: string }
   | { kind: 'event'; event: 'agent:status'; agentId: string; status: string }
   | { kind: 'event'; event: 'brain:event'; payload: BrainEvent }
-  | { kind: 'event'; event: 'agent:dispatch'; payload: AgentDispatch };
+  | { kind: 'event'; event: 'agent:dispatch'; payload: AgentDispatch }
+  | { kind: 'event'; event: 'org:changed' };
 
 /** Result shapes for each RPC op (for type-safe clients). */
 export interface DaemonRpcResults {

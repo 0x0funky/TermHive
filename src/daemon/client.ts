@@ -19,6 +19,7 @@ type OutputListener = (agentId: string, data: string) => void;
 type StatusListener = (agentId: string, status: string) => void;
 type BrainListener = (payload: BrainEvent) => void;
 type DispatchListener = (payload: AgentDispatch) => void;
+type OrgChangedListener = () => void;
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -34,6 +35,7 @@ export class DaemonClient {
   private readonly statusListeners = new Set<StatusListener>();
   private readonly brainListeners = new Set<BrainListener>();
   private readonly dispatchListeners = new Set<DispatchListener>();
+  private readonly orgChangedListeners = new Set<OrgChangedListener>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly outbox: string[] = []; // queued while disconnected
 
@@ -106,6 +108,8 @@ export class DaemonClient {
           for (const l of this.brainListeners) l(msg.payload);
         } else if (msg.event === 'agent:dispatch') {
           for (const l of this.dispatchListeners) l(msg.payload);
+        } else if (msg.event === 'org:changed') {
+          for (const l of this.orgChangedListeners) l();
         }
         break;
     }
@@ -173,6 +177,10 @@ export class DaemonClient {
   onDispatch(listener: DispatchListener): () => void {
     this.dispatchListeners.add(listener);
     return () => this.dispatchListeners.delete(listener);
+  }
+  onOrgChanged(listener: OrgChangedListener): () => void {
+    this.orgChangedListeners.add(listener);
+    return () => this.orgChangedListeners.delete(listener);
   }
 
   /** Send a user message to the orchestrator brain (fire-and-forget). */

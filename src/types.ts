@@ -83,4 +83,5 @@ export type WSServerMessage =
   | { type: 'agent:status'; agentId: string; status: string }
   | { type: 'content:updated'; projectId: string; filename: string }
   | { type: 'activity'; event: ActivityEvent }
-  | { type: 'brain:event'; payload: BrainEvent };
+  | { type: 'brain:event'; payload: BrainEvent }
+  | { type: 'org:changed' };

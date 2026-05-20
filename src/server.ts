@@ -78,6 +78,15 @@ daemon.onDispatch((d) => {
   });
 });
 
+// The brain created/changed a project or agent → start watching any new
+// project and tell browsers to reload the sidebar.
+daemon.onOrgChanged(() => {
+  for (const project of storage.listProjects()) {
+    activity.watchProject(project.id, project.name);
+  }
+  broadcast({ type: 'org:changed' });
+});
+
 // Wire activity feed to broadcast
 activity.setBroadcast((event: ActivityEvent) => {
   broadcast({ type: 'activity', event });

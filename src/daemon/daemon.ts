@@ -27,6 +27,8 @@ import {
   projectOverview,
   readShared,
   broadcastDispatch,
+  createProjectDispatch,
+  createAgentDispatch,
 } from './hive.js';
 import {
   DAEMON_HOST,
@@ -391,6 +393,48 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
     } catch (err) {
       sendJson(res, 500, {
         ok: false, replies: [], skipped: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  // POST /org/create-project — create a new project/team
+  if (httpReq.method === 'POST' && route === '/org/create-project') {
+    try {
+      const body = JSON.parse((await readBody(httpReq)) || '{}');
+      const result = createProjectDispatch(
+        String(body.name || ''),
+        String(body.cwd || ''),
+        body.description ? String(body.description) : undefined,
+      );
+      if (result.ok) broadcast({ kind: 'event', event: 'org:changed' });
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false, status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  // POST /org/create-agent — add an agent to a project
+  if (httpReq.method === 'POST' && route === '/org/create-agent') {
+    try {
+      const body = JSON.parse((await readBody(httpReq)) || '{}');
+      const result = createAgentDispatch(
+        String(body.project || ''),
+        String(body.name || ''),
+        String(body.cli || ''),
+        body.role ? String(body.role) : undefined,
+        body.cwd ? String(body.cwd) : undefined,
+      );
+      if (result.ok) broadcast({ kind: 'event', event: 'org:changed' });
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false, status: 'error',
         error: err instanceof Error ? err.message : String(err),
       });
     }
