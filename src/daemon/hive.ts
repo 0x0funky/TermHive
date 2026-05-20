@@ -421,6 +421,38 @@ export async function startAgentDispatch(
   return { ok: true, status: 'started', ...base };
 }
 
+export interface StopAgentResult {
+  ok: boolean;
+  status: 'stopped' | 'already-stopped' | 'not-found';
+  projectName?: string;
+  agentName?: string;
+  agentId?: string;
+  error?: string;
+}
+
+/** Stop a running agent. Its session is kept — start_agent resumes it later. */
+export function stopAgentDispatch(projectRef: string, agentRef: string): StopAgentResult {
+  const project = resolveProject(projectRef);
+  if (!project) {
+    return { ok: false, status: 'not-found', error: `No project matching "${projectRef}".` };
+  }
+  const agent = resolveAgent(project.id, agentRef);
+  if (!agent) {
+    return {
+      ok: false,
+      status: 'not-found',
+      projectName: project.name,
+      error: `No agent matching "${agentRef}" in ${project.name}.`,
+    };
+  }
+  const base = { projectName: project.name, agentName: agent.name, agentId: agent.id };
+  if (!ptyManager.isAgentRunning(agent.id)) {
+    return { ok: true, status: 'already-stopped', ...base };
+  }
+  ptyManager.stopAgent(agent.id);
+  return { ok: true, status: 'stopped', ...base };
+}
+
 // ─────────────────────── Knowledge base reads ───────────────────────
 
 export interface WikiReadResult {

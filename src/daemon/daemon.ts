@@ -29,6 +29,7 @@ import {
   broadcastDispatch,
   createProjectDispatch,
   createAgentDispatch,
+  stopAgentDispatch,
 } from './hive.js';
 import {
   DAEMON_HOST,
@@ -395,6 +396,33 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
     } catch (err) {
       sendJson(res, 500, {
         ok: false, replies: [], skipped: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  // POST /org/stop-agent — stop a running agent
+  if (httpReq.method === 'POST' && route === '/org/stop-agent') {
+    try {
+      const body = JSON.parse((await readBody(httpReq)) || '{}');
+      const project = String(body.project || '').trim();
+      const agent = String(body.agent || '').trim();
+      if (!project || !agent) {
+        sendJson(res, 400, {
+          ok: false, status: 'not-found',
+          error: 'project and agent are required',
+        });
+        return;
+      }
+      const result = stopAgentDispatch(project, agent);
+      if (result.status === 'stopped' && result.agentId) {
+        setStatus(result.agentId, 'stopped');
+      }
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false, status: 'not-found',
         error: err instanceof Error ? err.message : String(err),
       });
     }

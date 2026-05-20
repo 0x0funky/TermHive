@@ -71,6 +71,14 @@ interface StartResult {
   error?: string;
 }
 
+interface StopResult {
+  ok: boolean;
+  status: string;
+  agentName?: string;
+  projectName?: string;
+  error?: string;
+}
+
 interface WikiResult {
   ok: boolean;
   projectName?: string;
@@ -329,6 +337,22 @@ async function main() {
         },
       },
       {
+        name: 'stop_agent',
+        description:
+          'Stop a running agent. Use this to shut agents down — for example to ' +
+          'clean up agents you started only to check on them. Stopping is safe: ' +
+          'a Claude or Codex agent keeps its session and can be brought back ' +
+          'later with start_agent.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project: { type: 'string', description: 'Project name or id.' },
+            agent: { type: 'string', description: 'Agent name, role, or id.' },
+          },
+          required: ['project', 'agent'],
+        },
+      },
+      {
         name: 'ask_agent',
         description:
           'Send a question or instruction to one agent and wait for its reply. ' +
@@ -570,6 +594,33 @@ async function main() {
             return err(body.error || `Could not find agent "${agent}" in "${project}".`);
           default:
             return err(body.error || `start_agent failed (${body.status || 'unknown'}).`);
+        }
+      }
+
+      if (name === 'stop_agent') {
+        const project = String(a.project || '').trim();
+        const agent = String(a.agent || '').trim();
+        if (!project || !agent) return err('project and agent are required.');
+        const res = await daemonFetch(
+          `${args.daemonUrl}/org/stop-agent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project, agent }),
+          },
+          10_000,
+        );
+        const body = (await res.json().catch(() => ({}))) as StopResult;
+        const who = `${body.agentName || agent} (${body.projectName || project})`;
+        switch (body.status) {
+          case 'stopped':
+            return text(`${who} has been stopped. Its session is kept — start_agent will resume it.`);
+          case 'already-stopped':
+            return text(`${who} was already stopped.`);
+          case 'not-found':
+            return err(body.error || `Could not find agent "${agent}" in "${project}".`);
+          default:
+            return err(body.error || `stop_agent failed (${body.status || 'unknown'}).`);
         }
       }
 
