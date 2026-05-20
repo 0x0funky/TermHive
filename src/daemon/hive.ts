@@ -332,8 +332,19 @@ export async function askAgentDispatch(
     return { ok: true, status: reply ? 'replied' : 'no-reply', ...base, reply };
   }
 
-  // Codex / Gemini / other — deliver the message; reply capture lands with
-  // their precise-status support (v2.2 / later).
+  if (agent.cli === 'codex') {
+    // Codex → app-server: run a turn and wait for the structured reply.
+    const r = await runtime.askCodexAgent(agent.id, message);
+    if (r.status === 'not-running') {
+      return { ok: false, status: 'not-running', ...base, reply: null };
+    }
+    if (r.status === 'error') {
+      return { ok: false, status: 'no-reply', ...base, reply: null, error: r.error };
+    }
+    return { ok: true, status: r.status, ...base, reply: r.reply };
+  }
+
+  // Gemini / OpenCode — deliver the message; reply capture not supported.
   const injected = runtime.injectMessage(agent.id, 'Hive Orchestrator', message);
   return {
     ok: injected,

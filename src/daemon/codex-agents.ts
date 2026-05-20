@@ -265,6 +265,65 @@ export function injectMessage(agentId: string, fromName: string, message: string
   return true;
 }
 
+export interface CodexAskResult {
+  ok: boolean;
+  status: 'replied' | 'no-reply' | 'timeout' | 'not-running' | 'error';
+  reply: string | null;
+  error?: string;
+}
+
+const ASK_TIMEOUT_MS = 120_000;
+
+/**
+ * Run a turn on a Codex agent and wait for its reply — the Codex side of
+ * `ask_agent`. The turn also renders normally into the agent's terminal.
+ */
+export async function askAgent(agentId: string, message: string): Promise<CodexAskResult> {
+  const s = sessions.get(agentId);
+  if (!s || !server) return { ok: false, status: 'not-running', reply: null };
+  const cs = server;
+
+  emit(s, '\r\n' + dim(`[Message from Hive Orchestrator]: ${message}`) + '\r\n');
+
+  let turnId = '';
+  try {
+    const r = await cs.request('turn/start', {
+      threadId: s.threadId,
+      input: [{ type: 'text', text: message }],
+    });
+    turnId = r?.turn?.id || '';
+  } catch (err) {
+    return { ok: false, status: 'error', reply: null, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (!turnId) return { ok: false, status: 'error', reply: null, error: 'turn/start returned no turn id' };
+
+  return new Promise<CodexAskResult>((resolve) => {
+    const texts: string[] = [];
+    let done = false;
+    const finish = (timedOut: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      off();
+      if (timedOut) { resolve({ ok: true, status: 'timeout', reply: null }); return; }
+      const reply = texts.join('\n\n').trim();
+      resolve({ ok: true, status: reply ? 'replied' : 'no-reply', reply: reply || null });
+    };
+    const off = cs.onNotification((method, raw) => {
+      const params = raw as Record<string, any>;
+      if (params.threadId !== s.threadId) return;
+      if (method === 'item/completed'
+        && params.turnId === turnId
+        && params.item?.type === 'agentMessage'
+        && params.item?.text) {
+        texts.push(String(params.item.text));
+      }
+      if (method === 'turn/completed' && params.turn?.id === turnId) finish(false);
+    });
+    const timer = setTimeout(() => finish(true), ASK_TIMEOUT_MS);
+  });
+}
+
 /** No-op — app-server threads have no terminal geometry. */
 export function resizeAgent(_agentId: string, _cols: number, _rows: number): void {
   /* intentionally empty */

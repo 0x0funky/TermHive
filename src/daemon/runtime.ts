@@ -71,3 +71,8 @@ export function getRunningAgentIds(): string[] {
 export function cleanupMcpConfig(agent: Agent): void {
   pty.cleanupMcpConfig(agent);
 }
+
+/** Run a turn on a Codex agent and wait for its reply (the Codex `ask_agent`). */
+export function askCodexAgent(agentId: string, message: string) {
+  return codex.askAgent(agentId, message);
+}
