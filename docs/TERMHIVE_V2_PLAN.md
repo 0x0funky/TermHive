@@ -273,20 +273,57 @@ Delivery: in-UI notifications + browser notifications + (future) Telegram.
 
 ## 8. Roadmap
 
-| Version | Scope | Effort | Value |
-|---------|-------|--------|-------|
-| **v2.0 Daemonize** | Extract PTY management into a standalone `termhive-daemon`; web becomes a client | ~1 wk | Fixes disconnects/zombies; foundation for everything |
-| **v2.1 Precise status** | Hooks + JSONL tailing + new status enum + UI | 3-4 d | "Which agent is waiting for me" |
-| **v2.2 Codex app-server** | Codex agents move from PTY to `codex app-server` JSON-RPC | 4-5 d | Structured Codex + brings forward the brain's runtime |
-| **v2.3 Orchestrator** | Hive Orchestrator MCP + brain agent + Claude/Codex brain toggle + Command panel | ~1.5 wk | The JARVIS core experience |
-| **v2.4 Watchdog** | Proactive monitoring + notifications + daily briefing | ~1 wk | Strongest differentiator |
-| **v2.5 Action + safety** | Brain can dispatch write-actions + plan-approve + audit | ~1 wk | Full orchestration |
+| Version | Scope | Status |
+|---------|-------|--------|
+| **v2.0 Daemonize** | Standalone `termhive-daemon` owns PTYs; web is a client | ✅ done + tested |
+| **v2.1 Precise status** | Claude lifecycle hooks → running/awaiting_input/idle/stopped | ✅ done + tested |
+| **v2.2 Codex precise status** | Codex hooks → same status engine (see §8.1) | deferred — secondary CLI |
+| **v2.3 Orchestrator** | Hive Orchestrator MCP + brain agent + Claude/Codex brain toggle + Command panel | **next — the JARVIS core** |
+| **v2.4 Watchdog** | Proactive monitoring + notifications + daily briefing | after v2.3 |
+| **v2.5 Action + safety** | Brain can dispatch write-actions + plan-approve + audit | after v2.4 |
 
-Total ≈ 6-7 weeks; each version ships independently.
+Each version ships independently. v2.0 + v2.1 are live on `feat/v2`.
 
-**Order note (post-billing-change):** v2.2 (Codex app-server) is pulled earlier
-because Codex is now the default brain runtime — v2.3 depends on it. Suggested
-sequence: v2.0 → v2.1 → v2.2 → v2.3 → v2.4 → v2.5.
+### 8.1 v2.2 Codex status — design note
+
+v2.1's Claude approach (per-agent `claude --settings <path>`) does **not** map
+to Codex: Codex hooks are discovered only by directory (`~/.codex/hooks.json`
+or `<repo>/.codex/hooks.json`) — there is no CLI flag, `-c` override, or env
+var to point at a per-agent hook file.
+
+Chosen approach (per user): a **single global `~/.codex/hooks.json`** is
+acceptable. Make it per-agent by resolution rather than by config:
+
+1. Daemon writes/merges global `~/.codex/hooks.json` once. Each hook posts its
+   stdin JSON (which includes `session_id` and `cwd`) to the daemon.
+2. When the daemon spawns a Codex agent it reads the newest rollout file under
+   `~/.codex/sessions/` to learn that agent's `session_id`, and binds
+   `session_id ↔ agentId`.
+3. Incoming Codex hooks carry `session_id` → daemon routes status to the right
+   agent. cwd is a fallback match.
+
+This keeps Codex on a real typeable PTY (manual operation preserved) and reuses
+the v2.1 status engine. Deferred because Codex is the secondary CLI and Claude
+status already works.
+
+### 8.2 v2.3 — implementation starting points
+
+Build on what exists on `feat/v2`:
+
+- **Daemon** (`src/daemon/daemon.ts`) — host the brain here; it is long-lived.
+- **DaemonClient** (`src/daemon/client.ts`) — extend the protocol with brain ops.
+- **Status engine** (daemon) — `ask_agent` to a Claude agent = PTY-inject the
+  prompt (existing `injectMessage`) then watch the status engine for the
+  agent returning to `awaiting_input` = turn done; then read the reply from
+  the agent's session JSONL tail.
+- **MCP server pattern** — `src/mcp-server.ts` already shows how to build one
+  (`message_agent`, `list_teammates`). The Hive Orchestrator MCP is the same
+  shape with org-level tools (§5).
+- **Brain runtime** — Codex default: `codex exec --json` resuming the brain's
+  own thread (programmatic Codex is subscription-covered — see §3). Claude
+  option: a daemon-owned PTY.
+- **UI** — a new Command panel; `⌘J` to open. The Messages panel
+  (`MessagesPanel.tsx`) is a reference for a chat-style panel.
 
 ---
 
