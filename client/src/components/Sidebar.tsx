@@ -125,7 +125,8 @@ export default function Sidebar({
         <div className="sb-projects">
           {projects.map(p => {
             const list = agents.get(p.id) || [];
-            const runningCount = list.filter(a => a.status === 'running').length;
+            // "alive" = process exists (running / awaiting_input / idle)
+            const aliveCount = list.filter(a => a.status !== 'stopped').length;
             const isActive = p.id === selectedProjectId;
             return (
               <button
@@ -135,8 +136,8 @@ export default function Sidebar({
               >
                 <div className="name-row">
                   <span className="n">{p.name}</span>
-                  {runningCount > 0
-                    ? <span className="running-chip">{runningCount}/{list.length}</span>
+                  {aliveCount > 0
+                    ? <span className="running-chip">{aliveCount}/{list.length}</span>
                     : <span className="total-chip">{list.length}</span>}
                 </div>
               </button>

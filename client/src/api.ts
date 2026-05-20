@@ -71,6 +71,8 @@ export interface Project {
   createdAt: string;
 }
 
+export type AgentStatus = 'stopped' | 'running' | 'idle' | 'awaiting_input';
+
 export interface Agent {
   id: string;
   projectId: string;
@@ -78,7 +80,7 @@ export interface Agent {
   role?: string;
   cli: 'claude' | 'codex' | 'gemini' | 'opencode';
   cwd: string;
-  status: 'stopped' | 'running' | 'idle';
+  status: AgentStatus;
   pid?: number;
   flags?: {
     dangerouslySkipPermissions?: boolean;

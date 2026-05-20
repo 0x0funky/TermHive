@@ -6,6 +6,15 @@ export interface Project {
   createdAt: string;
 }
 
+/**
+ * Agent status. v2.1 derives the finer states from Claude Code lifecycle hooks:
+ *   running        — actively working
+ *   awaiting_input — finished a turn / asked something — needs the user
+ *   idle           — awaiting_input for a while with no attention
+ *   stopped        — not running
+ */
+export type AgentStatus = 'stopped' | 'running' | 'idle' | 'awaiting_input';
+
 export interface Agent {
   id: string;
   projectId: string;
@@ -13,7 +22,7 @@ export interface Agent {
   role?: string;
   cli: 'claude' | 'codex' | 'gemini' | 'opencode';
   cwd: string;
-  status: 'stopped' | 'running' | 'idle';
+  status: AgentStatus;
   pid?: number;
   flags?: {
     dangerouslySkipPermissions?: boolean;

@@ -5,9 +5,16 @@ import { fileURLToPath } from 'url';
 import type { Agent } from './types.js';
 import { updateAgent, getProjectData, SHARED_CONTENT_DIR, WIKI_DIR } from './storage.js';
 import { writeClaudeMcpConfig, writeCodexMcpConfig, removeClaudeMcpConfig, removeCodexMcpConfig, getClaudeMcpConfigPath } from './mcp-config.js';
+import { writeClaudeHookConfig, removeClaudeHookConfig } from './hook-config.js';
+import { DAEMON_HOST, DAEMON_PORT } from './daemon/protocol.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname_ = path.dirname(__filename);
+
+/** Base URL the daemon serves hook callbacks on (HTTP on the daemon's port). */
+function getHookBaseUrl(): string {
+  return `http://${DAEMON_HOST}:${DAEMON_PORT}`;
+}
 
 /**
  * Absolute path to the compiled MCP server entry (dist/mcp-server.js).
@@ -258,7 +265,7 @@ function ensureInstructionFile(
   }
 }
 
-function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string, mcpConfigPath: string | null, cwd: string): { cmd: string; args: string[] } {
+function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string, mcpConfigPath: string | null, hookConfigPath: string | null, cwd: string): { cmd: string; args: string[] } {
   const args: string[] = [];
   switch (agent.cli) {
     case 'claude':
@@ -271,6 +278,8 @@ function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string, mcpCo
       args.push('--add-dir', sharedPath);
       args.push('--add-dir', wikiPath);
       if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+      // Lifecycle hooks → daemon status engine (additive to user's settings)
+      if (hookConfigPath) args.push('--settings', hookConfigPath);
       return { cmd: 'claude', args };
     case 'codex':
       // Same idea for Codex: `codex resume --last` is cwd-filtered by default
@@ -332,6 +341,17 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
     // Non-fatal: agent still starts, just without messaging capability
   }
 
+  // Register lifecycle hooks so the daemon can derive precise status (Claude only)
+  let claudeHookConfigPath: string | null = null;
+  if (agent.cli === 'claude') {
+    try {
+      claudeHookConfigPath = writeClaudeHookConfig(agent.id, getHookBaseUrl());
+    } catch (err) {
+      console.warn(`[pty-manager] Failed to write hook config for ${agent.name}:`, err);
+      // Non-fatal: agent still starts, status falls back to running/stopped
+    }
+  }
+
   // Write instruction file in agent's cwd so the CLI knows about shared content + memory + teammates
   const instructionFiles: Record<string, string> = {
     claude: 'CLAUDE.md',
@@ -342,7 +362,7 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
   const instrFile = path.join(cwd, instructionFiles[agent.cli]);
   ensureInstructionFile(instrFile, projectName, sharedPath, wikiPath, agent, teammates);
 
-  const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath, claudeMcpConfigPath, cwd);
+  const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath, claudeMcpConfigPath, claudeHookConfigPath, cwd);
   const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
 
   let proc: IPty;
@@ -431,6 +451,7 @@ export function cleanupMcpConfig(agent: Agent) {
   try {
     if (agent.cli === 'claude') {
       removeClaudeMcpConfig(agent.id);
+      removeClaudeHookConfig(agent.id);
     } else if (agent.cli === 'codex') {
       removeCodexMcpConfig(agent.id);
     }

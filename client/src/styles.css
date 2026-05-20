@@ -445,6 +445,15 @@ input, select, textarea { font-family: inherit; }
 }
 .sdot.stopped { background: var(--text-3); }
 .sdot.idle { background: var(--idle); }
+.sdot.awaiting_input {
+  background: var(--attn);
+  animation: pulse-attn 1.5s ease-out infinite;
+}
+@keyframes pulse-attn {
+  0% { box-shadow: 0 0 0 0 var(--attn); }
+  70% { box-shadow: 0 0 0 5px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 
 /* usage bars */
 .sb-usage {
@@ -832,6 +841,7 @@ input, select, textarea { font-family: inherit; }
 }
 .pane-status-chip.running { background: var(--ok-soft); color: var(--ok); }
 .pane-status-chip.stopped { background: var(--bg-3); color: var(--text-2); }
+.pane-status-chip.awaiting_input { background: var(--attn-soft); color: var(--attn); }
 .pane-status-chip.idle { background: var(--idle-soft); color: var(--text-1); }
 
 .pane-btn {

@@ -20,6 +20,17 @@ import type { Agent } from '../api';
 
 export type GridLayout = 'single' | '2up' | '3up' | 'grid' | 'canvas';
 
+/** Human-friendly label for an agent status. */
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'awaiting_input': return 'awaiting you';
+    case 'running': return 'running';
+    case 'idle': return 'idle';
+    case 'stopped': return 'stopped';
+    default: return status;
+  }
+}
+
 // ---- Split tree model (for grid layout) --------------------------------
 
 type TreeNode =
@@ -134,7 +145,9 @@ function AgentPane({
   if (isDragging) cls.push('dragging');
   if (isDragOver) cls.push('drag-over');
 
-  const isRunning = agent.status === 'running';
+  // An agent is "alive" (terminal shown, Stop button) for any non-stopped
+  // status — running, awaiting_input, or idle all mean the process exists.
+  const isAlive = agent.status !== 'stopped';
 
   return (
     <div
@@ -167,12 +180,12 @@ function AgentPane({
           </div>
           <span className={'pane-status-chip ' + agent.status}>
             <span className={'sdot ' + agent.status} style={{ width: 6, height: 6 }} />
-            {agent.status}
+            {statusLabel(agent.status)}
           </span>
         </div>
         <div className="pane-head-r">
           <div style={{ display: 'flex', gap: 2 }}>
-            {isRunning ? (
+            {isAlive ? (
               <button className="pane-btn" title="Stop" onClick={(e) => { e.stopPropagation(); onStop(agent); }}><Ic.stop size={9} /></button>
             ) : (
               <button className="pane-btn" title="Start" onClick={(e) => { e.stopPropagation(); onStart(agent); }}><Ic.play size={10} /></button>
@@ -184,7 +197,7 @@ function AgentPane({
       </div>
 
       <div className="pane-body">
-        {isRunning ? (
+        {isAlive ? (
           <Terminal
             agentId={agent.id}
             send={send}

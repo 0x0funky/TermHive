@@ -1,16 +1,22 @@
 /**
  * termhive-daemon — owns every agent PTY process and outlives the web server.
  *
- * The web server connects as a client over a local WebSocket (see protocol.ts).
- * Because the PTYs live here, restarting / rebuilding the web server no longer
- * kills running agents — the daemon keeps them alive.
+ * Two interfaces on one port (127.0.0.1:3210):
+ *   - WebSocket  — the web server connects here (see protocol.ts)
+ *   - HTTP       — agent lifecycle hooks POST here (POST /hook/:agentId/:event)
  *
- * Run standalone:  node dist/daemon.js   (or: npm run daemon)
+ * Because the PTYs live here, restarting the web server no longer kills agents.
+ * The HTTP hook endpoint feeds the status engine, which derives precise agent
+ * status (running / awaiting_input / idle / stopped) from Claude Code hooks.
+ *
+ * Run standalone:  node dist/daemon/daemon.js   (or: npm run daemon)
  */
 
+import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as ptyManager from '../pty-manager.js';
 import * as storage from '../storage.js';
+import { hookEventToStatus } from '../hook-config.js';
 import {
   DAEMON_HOST,
   DAEMON_PORT,
@@ -23,14 +29,11 @@ const startedAt = new Date().toISOString();
 /** Every connected web client. Normally one, but tolerate reconnects. */
 const clients = new Set<WebSocket>();
 
-/** Per-client: the output listeners it registered, keyed by agentId, so we can
- *  tear them down cleanly on detach / disconnect. */
+/** Per-client output listeners, keyed by agentId, for clean teardown. */
 const clientListeners = new WeakMap<WebSocket, Map<string, (data: string) => void>>();
 
 function send(ws: WebSocket, msg: DaemonMessage) {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg));
-  }
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
 function broadcast(msg: DaemonMessage) {
@@ -40,16 +43,55 @@ function broadcast(msg: DaemonMessage) {
   }
 }
 
-/** Shared status callback handed to pty-manager — fans out to all web clients
- *  and persists the new status to storage. */
-function onAgentStatus(agentId: string, status: string) {
-  broadcast({ kind: 'event', event: 'agent:status', agentId, status });
+// ─────────────────────────── Status engine ───────────────────────────
+// Derives precise status from Claude lifecycle hooks + process liveness.
+//   running         — actively working (SessionStart/UserPromptSubmit/Pre|PostToolUse)
+//   awaiting_input  — Stop / Notification fired — needs the user
+//   idle            — awaiting_input for longer than IDLE_AFTER_MS
+//   stopped         — process exited / SessionEnd
+
+const IDLE_AFTER_MS = 3 * 60 * 1000;
+const agentStatus = new Map<string, string>();
+const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function setStatus(agentId: string, status: string) {
+  const prev = agentStatus.get(agentId);
+
+  // Any transition clears a pending idle timer
+  const timer = idleTimers.get(agentId);
+  if (timer) { clearTimeout(timer); idleTimers.delete(agentId); }
+
+  if (status === 'stopped') {
+    agentStatus.delete(agentId);
+  } else {
+    agentStatus.set(agentId, status);
+  }
+
+  if (prev !== status) {
+    broadcast({ kind: 'event', event: 'agent:status', agentId, status });
+  }
+
+  // Awaiting input → after a while, demote to idle
+  if (status === 'awaiting_input') {
+    idleTimers.set(agentId, setTimeout(() => {
+      idleTimers.delete(agentId);
+      if (agentStatus.get(agentId) === 'awaiting_input') {
+        setStatus(agentId, 'idle');
+      }
+    }, IDLE_AFTER_MS));
+  }
 }
+
+/** Status callback handed to pty-manager — 'running' on spawn, 'stopped' on exit. */
+function onAgentStatus(agentId: string, status: string) {
+  setStatus(agentId, status);
+}
+
+// ─────────────────────────── Terminal streaming ───────────────────────────
 
 function attachTerminal(ws: WebSocket, agentId: string) {
   const listeners = clientListeners.get(ws);
   if (!listeners) return;
-  // Replace any existing listener for this agent (idempotent attach)
   const existing = listeners.get(agentId);
   if (existing) ptyManager.removeOutputListener(agentId, existing);
 
@@ -69,8 +111,9 @@ function detachTerminal(ws: WebSocket, agentId: string) {
   }
 }
 
+// ─────────────────────────── WebSocket requests ───────────────────────────
+
 async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
-  // Fire-and-forget commands (no id)
   if (!('id' in req)) {
     switch (req.op) {
       case 'terminal:attach': attachTerminal(ws, req.agentId); return;
@@ -81,11 +124,8 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
     return;
   }
 
-  // RPC — must reply with the same id
-  const reply = (result: unknown) =>
-    send(ws, { kind: 'reply', id: req.id, ok: true, result });
-  const fail = (error: string) =>
-    send(ws, { kind: 'reply', id: req.id, ok: false, error });
+  const reply = (result: unknown) => send(ws, { kind: 'reply', id: req.id, ok: true, result });
+  const fail = (error: string) => send(ws, { kind: 'reply', id: req.id, ok: false, error });
 
   try {
     switch (req.op) {
@@ -97,12 +137,14 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
       }
       case 'agent:stop': {
         const ok = ptyManager.stopAgent(req.agentId);
+        setStatus(req.agentId, 'stopped');
         return reply({ ok });
       }
       case 'agent:restart': {
         const agent = storage.getAgent(req.projectId, req.agentId);
         if (!agent) return fail('Agent not found');
         ptyManager.stopAgent(req.agentId);
+        setStatus(req.agentId, 'stopped');
         setTimeout(() => {
           const fresh = storage.getAgent(req.projectId, req.agentId);
           if (fresh) ptyManager.startAgent(fresh, onAgentStatus);
@@ -132,7 +174,36 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
   }
 }
 
-const wss = new WebSocketServer({ host: DAEMON_HOST, port: DAEMON_PORT });
+// ─────────────────────────── HTTP hook endpoint ───────────────────────────
+
+function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
+  const url = httpReq.url || '';
+  // POST /hook/<agentId>/<event>
+  if (httpReq.method === 'POST' && url.startsWith('/hook/')) {
+    const parts = url.split('?')[0].split('/'); // ['', 'hook', agentId, event]
+    const agentId = parts[2];
+    const event = parts[3];
+    const status = agentId && event ? hookEventToStatus(event) : null;
+    if (agentId && status && ptyManager.isAgentRunning(agentId)) {
+      setStatus(agentId, status);
+    }
+    res.writeHead(204); // empty body — keeps `curl -s` output silent
+    res.end();
+    return;
+  }
+  if (httpReq.method === 'GET' && url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, pid: process.pid, startedAt }));
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+}
+
+// ─────────────────────────── Server bootstrap ───────────────────────────
+
+const httpServer = createServer(handleHttp);
+const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws) => {
   clients.add(ws);
@@ -141,6 +212,11 @@ wss.on('connection', (ws) => {
 
   send(ws, { kind: 'hello', pid: process.pid, startedAt });
 
+  // Replay current statuses so a freshly (re)started web server is in sync
+  for (const [agentId, status] of agentStatus) {
+    send(ws, { kind: 'event', event: 'agent:status', agentId, status });
+  }
+
   ws.on('message', (raw) => {
     let req: DaemonRequest;
     try {
@@ -148,13 +224,10 @@ wss.on('connection', (ws) => {
     } catch {
       return;
     }
-    handleRequest(ws, req).catch((err) => {
-      console.error('[daemon] request error:', err);
-    });
+    handleRequest(ws, req).catch((err) => console.error('[daemon] request error:', err));
   });
 
   ws.on('close', () => {
-    // Remove all output listeners this client registered
     const listeners = clientListeners.get(ws);
     if (listeners) {
       for (const [agentId, listener] of listeners) {
@@ -167,11 +240,13 @@ wss.on('connection', (ws) => {
   });
 });
 
-wss.on('listening', () => {
-  console.log(`[daemon] termhive-daemon listening on ws://${DAEMON_HOST}:${DAEMON_PORT} (pid ${process.pid})`);
+httpServer.listen(DAEMON_PORT, DAEMON_HOST, () => {
+  console.log(`[daemon] termhive-daemon listening on ${DAEMON_HOST}:${DAEMON_PORT} (pid ${process.pid})`);
+  console.log(`[daemon]   ws://${DAEMON_HOST}:${DAEMON_PORT}  — web client`);
+  console.log(`[daemon]   http://${DAEMON_HOST}:${DAEMON_PORT}/hook/:agentId/:event  — lifecycle hooks`);
 });
 
-wss.on('error', (err) => {
+httpServer.on('error', (err) => {
   console.error('[daemon] server error:', err);
   process.exit(1);
 });

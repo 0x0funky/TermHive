@@ -134,7 +134,11 @@ export default function App() {
   const projectAgents = selectedProjectId ? agents.get(selectedProjectId) || [] : [];
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const runningCount = projectAgents.filter((a) => a.status === 'running').length;
+  const awaitingCount = projectAgents.filter((a) => a.status === 'awaiting_input').length;
+  const idleCount = projectAgents.filter((a) => a.status === 'idle').length;
   const stoppedCount = projectAgents.filter((a) => a.status === 'stopped').length;
+  // "alive" = process exists (running / awaiting / idle) — used for Stop-all gating
+  const aliveCount = runningCount + awaitingCount + idleCount;
 
   // Keyboard shortcuts: ⌘K/Ctrl+K (palette), ⌘1–5 (focus agent)
   // `capture: true` fires in the capture phase so it preempts xterm's textarea
@@ -233,8 +237,9 @@ export default function App() {
     const pid = projectId || selectedProjectId;
     if (!pid) return;
     const list = agents.get(pid) || [];
-    const running = list.filter((a) => a.status === 'running');
-    await Promise.all(running.map((a) => api.stopAgent(pid, a.id)));
+    // Stop everything that is alive — running, awaiting_input, or idle
+    const alive = list.filter((a) => a.status !== 'stopped');
+    await Promise.all(alive.map((a) => api.stopAgent(pid, a.id)));
     await loadAgents(pid);
   };
 
@@ -378,7 +383,7 @@ export default function App() {
                     <button
                       className="batch-btn"
                       onClick={() => handleStopAll()}
-                      disabled={runningCount === 0}
+                      disabled={aliveCount === 0}
                     >
                       <Ic.stop size={9} /> Stop all
                     </button>
@@ -431,6 +436,16 @@ export default function App() {
               <span className="st-item">
                 <span className="sdot running" style={{ width: 6, height: 6 }} /> {runningCount} running
               </span>
+              {awaitingCount > 0 && (
+                <span className="st-item" style={{ color: 'var(--attn)' }}>
+                  <span className="sdot awaiting_input" style={{ width: 6, height: 6 }} /> {awaitingCount} awaiting you
+                </span>
+              )}
+              {idleCount > 0 && (
+                <span className="st-item" style={{ color: 'var(--text-2)' }}>
+                  <span className="sdot idle" style={{ width: 6, height: 6 }} /> {idleCount} idle
+                </span>
+              )}
               <span className="st-item" style={{ color: 'var(--text-2)' }}>
                 <span className="sdot stopped" style={{ width: 6, height: 6 }} /> {stoppedCount} stopped
               </span>
