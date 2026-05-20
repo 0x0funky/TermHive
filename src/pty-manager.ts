@@ -33,6 +33,84 @@ function expandHome(p: string): string {
   return p;
 }
 
+/** Normalize for path equality — case-insensitive + forward slashes on Windows. */
+function normalizePath(p: string): string {
+  let n = path.resolve(p).replace(/\\/g, '/');
+  if (process.platform === 'win32') n = n.toLowerCase();
+  return n;
+}
+
+/**
+ * Claude Code stores project session transcripts under
+ *   ~/.claude/projects/<slug>/<sessionId>.jsonl
+ * where <slug> is cwd with every non-alphanumeric character replaced by `-`.
+ * Returns true if at least one .jsonl exists for this cwd (→ `claude -c` is safe).
+ */
+function hasClaudeSessionFor(cwd: string): boolean {
+  try {
+    const slug = path.resolve(cwd).replace(/[^a-zA-Z0-9]/g, '-');
+    const dir = path.join(os.homedir(), '.claude', 'projects', slug);
+    if (!fs.existsSync(dir)) return false;
+    return fs.readdirSync(dir).some((f) => f.endsWith('.jsonl'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Codex CLI stores session rollout files at
+ *   ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl
+ * The cwd is embedded inside each file's first line (type:"session_meta").
+ * We scan the 30 most recent rollouts and return true if any was recorded for
+ * this cwd → `codex resume --last` is safe and will pick it up.
+ *
+ * `codex resume` is already cwd-filtered by default (the `--all` flag is what
+ * disables that filtering), so `--last` will pick the most recent session for
+ * the current working directory — exactly like `claude -c`.
+ */
+function hasCodexSessionFor(cwd: string): boolean {
+  try {
+    const root = path.join(os.homedir(), '.codex', 'sessions');
+    if (!fs.existsSync(root)) return false;
+
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (
+          entry.isFile() &&
+          entry.name.startsWith('rollout-') &&
+          entry.name.endsWith('.jsonl')
+        ) {
+          files.push(full);
+        }
+      }
+    };
+    walk(root);
+
+    // Filename carries the timestamp, so descending name sort == newest first
+    files.sort((a, b) => b.localeCompare(a));
+
+    const target = normalizePath(cwd);
+    for (const f of files.slice(0, 30)) {
+      try {
+        // Only need the first line (session_meta)
+        const firstLine = fs.readFileSync(f, 'utf-8').split('\n', 1)[0];
+        if (!firstLine) continue;
+        const obj = JSON.parse(firstLine);
+        const sessionCwd = obj?.payload?.cwd || obj?.cwd;
+        if (sessionCwd && normalizePath(sessionCwd) === target) return true;
+      } catch {
+        /* skip malformed file */
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // Dynamic import for node-pty (optional dependency)
 let pty: typeof import('node-pty') | null = null;
 try {
@@ -180,10 +258,14 @@ function ensureInstructionFile(
   }
 }
 
-function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string, mcpConfigPath: string | null): { cmd: string; args: string[] } {
+function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string, mcpConfigPath: string | null, cwd: string): { cmd: string; args: string[] } {
   const args: string[] = [];
   switch (agent.cli) {
     case 'claude':
+      // Auto-resume the most recent conversation for this cwd when one exists.
+      // Without a prior session `claude -c` errors, so we only add it when we
+      // see a matching transcript on disk.
+      if (hasClaudeSessionFor(cwd)) args.push('-c');
       if (agent.flags?.dangerouslySkipPermissions) args.push('--dangerously-skip-permissions');
       if (agent.flags?.remoteControl) args.push('--remote-control');
       args.push('--add-dir', sharedPath);
@@ -191,6 +273,10 @@ function getCliCommand(agent: Agent, sharedPath: string, wikiPath: string, mcpCo
       if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
       return { cmd: 'claude', args };
     case 'codex':
+      // Same idea for Codex: `codex resume --last` is cwd-filtered by default
+      // (use `--all` to disable), so it picks the most recent session recorded
+      // from this cwd. Only add it when we find such a session.
+      if (hasCodexSessionFor(cwd)) args.push('resume', '--last');
       // Codex's --add-dir adds *writable* roots, which requires sandbox mode
       // to be at least workspace-write. Default to workspace-write so shared
       // content / wiki are actually writable by the agent.
@@ -256,7 +342,7 @@ export function startAgent(agent: Agent, onStatus: (agentId: string, status: str
   const instrFile = path.join(cwd, instructionFiles[agent.cli]);
   ensureInstructionFile(instrFile, projectName, sharedPath, wikiPath, agent, teammates);
 
-  const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath, claudeMcpConfigPath);
+  const { cmd, args } = getCliCommand(agent, sharedPath, wikiPath, claudeMcpConfigPath, cwd);
   const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
 
   let proc: IPty;
