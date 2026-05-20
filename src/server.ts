@@ -64,6 +64,20 @@ daemon.onBrain((payload) => {
   broadcast({ type: 'brain:event', payload });
 });
 
+// Orchestrator dispatches (ask_agent / broadcast) → record in the activity
+// feed so the brain's actions are visible in the Messages panel.
+daemon.onDispatch((d) => {
+  activity.pushEvent({
+    projectId: d.projectId,
+    agentName: d.fromName,
+    event: 'agent:message',
+    detail: `${d.fromName} → ${d.agentName}: ${d.message.slice(0, 120)}`,
+    fromAgent: d.fromName,
+    toAgent: d.agentName,
+    message: d.message,
+  });
+});
+
 // Wire activity feed to broadcast
 activity.setBroadcast((event: ActivityEvent) => {
   broadcast({ type: 'activity', event });

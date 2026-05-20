@@ -304,7 +304,7 @@ export class Orchestrator {
         try { summary = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs); }
         catch { summary = ''; }
       }
-      return { role: 'tool', tool: server + name, text: summary.slice(0, 240) };
+      return { role: 'tool', tool: server + name, text: summary.slice(0, 600) };
     }
     if (type === 'error') {
       return { role: 'error', text: String(item.message || 'error') };

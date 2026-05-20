@@ -42,6 +42,21 @@ export interface BrainState {
 }
 
 /**
+ * Emitted when the orchestrator dispatches to an agent (ask_agent / broadcast),
+ * so the web server can record it in the activity feed — the brain's actions
+ * become visible in the Messages panel like agent-to-agent messages.
+ */
+export interface AgentDispatch {
+  projectId: string;
+  projectName: string;
+  agentName: string;
+  fromName: string;
+  message: string;
+  status: string;
+  reply?: string | null;
+}
+
+/**
  * Web → Daemon. Messages with an `id` expect a `reply`; messages without an
  * `id` are fire-and-forget commands.
  */
@@ -72,7 +87,8 @@ export type DaemonMessage =
   | { kind: 'reply'; id: string; ok: false; error: string }
   | { kind: 'event'; event: 'terminal:output'; agentId: string; data: string }
   | { kind: 'event'; event: 'agent:status'; agentId: string; status: string }
-  | { kind: 'event'; event: 'brain:event'; payload: BrainEvent };
+  | { kind: 'event'; event: 'brain:event'; payload: BrainEvent }
+  | { kind: 'event'; event: 'agent:dispatch'; payload: AgentDispatch };
 
 /** Result shapes for each RPC op (for type-safe clients). */
 export interface DaemonRpcResults {

@@ -71,6 +71,7 @@ export interface AskAgentResult {
   ok: boolean;
   /** replied | no-reply | timeout | delivered | not-running | not-found */
   status: 'replied' | 'no-reply' | 'timeout' | 'delivered' | 'not-running' | 'not-found';
+  projectId?: string;
   projectName?: string;
   agentName?: string;
   cli?: string;
@@ -154,11 +155,30 @@ function claudeTranscriptDir(cwd: string): string {
   return path.join(os.homedir(), '.claude', 'projects', slug);
 }
 
+/** Pull the text blocks out of an assistant transcript record. */
+function assistantText(rec: { message?: { content?: unknown } }): string[] {
+  const blocks = rec?.message?.content;
+  if (!Array.isArray(blocks)) return [];
+  const out: string[] = [];
+  for (const b of blocks) {
+    if (b && b.type === 'text' && typeof b.text === 'string' && b.text.trim()) {
+      out.push(b.text.trim());
+    }
+  }
+  return out;
+}
+
 /**
- * Read the assistant text a Claude agent produced after `sinceMs` from its
- * transcript. Returns the concatenated reply, or null if nothing was found.
+ * Read the reply a Claude agent produced for our injected message.
+ *
+ * Branch-safe: it locates our exact injected turn in the transcript, then
+ * follows the `parentUuid` tree to collect only the assistant text that
+ * descends from it. A Claude session can fork (e.g. when the same session is
+ * driven from two places); reading "the newest assistant text" could otherwise
+ * return a reply from an unrelated branch. Falls back to a timestamp window if
+ * the injected turn cannot be matched.
  */
-function readClaudeReply(cwd: string, sinceMs: number): string | null {
+function readClaudeReply(cwd: string, sinceMs: number, injectedText: string): string | null {
   const dir = claudeTranscriptDir(cwd);
   if (!fs.existsSync(dir)) return null;
 
@@ -174,36 +194,77 @@ function readClaudeReply(cwd: string, sinceMs: number): string | null {
     .sort((a, b) => b.mtime - a.mtime);
   if (files.length === 0) return null;
 
-  const cutoff = sinceMs - 3000; // 3s grace for clock skew
-  const texts: string[] = [];
+  const cutoff = sinceMs - 3000; // grace for clock skew
+  const target = injectedText.trim();
 
   // The active session is almost always the newest file; check the top two.
   for (const { full } of files.slice(0, 2)) {
     let content = '';
     try { content = fs.readFileSync(full, 'utf-8'); } catch { continue; }
+    const recs: Array<Record<string, any>> = [];
     for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      let obj: Record<string, unknown>;
-      try { obj = JSON.parse(trimmed); } catch { continue; }
-      if (obj.type !== 'assistant') continue;
-      const ts = typeof obj.timestamp === 'string' ? Date.parse(obj.timestamp) : 0;
-      if (!ts || ts < cutoff) continue;
-      const message = obj.message as { content?: unknown } | undefined;
-      const blocks = message?.content;
-      if (!Array.isArray(blocks)) continue;
-      for (const b of blocks) {
-        if (b && typeof b === 'object' && (b as { type?: string }).type === 'text') {
-          const t = (b as { text?: string }).text;
-          if (t && t.trim()) texts.push(t.trim());
-        }
+      const t = line.trim();
+      if (!t) continue;
+      try { recs.push(JSON.parse(t)); } catch { /* skip malformed line */ }
+    }
+
+    // Locate our injected turn — the latest user record whose content matches
+    // the injected text and arrived no earlier than when we injected.
+    let injectedUuid: string | null = null;
+    for (const o of recs) {
+      if (o.type !== 'user' || typeof o.uuid !== 'string') continue;
+      const c = o.message?.content;
+      if (typeof c !== 'string') continue;
+      const ts = typeof o.timestamp === 'string' ? Date.parse(o.timestamp) : 0;
+      if (ts && ts < cutoff) continue;
+      if (c.trim() === target || c.includes(target)) injectedUuid = o.uuid;
+    }
+    if (!injectedUuid) continue; // not in this file — try the next newest
+
+    // Collect every descendant of our turn via the parentUuid tree.
+    const childrenOf: Record<string, string[]> = {};
+    for (const o of recs) {
+      if (typeof o.parentUuid === 'string' && typeof o.uuid === 'string') {
+        (childrenOf[o.parentUuid] ||= []).push(o.uuid);
       }
     }
-    if (texts.length > 0) break;
+    const descendants = new Set<string>();
+    const stack = [injectedUuid];
+    while (stack.length) {
+      const u = stack.pop() as string;
+      for (const cu of childrenOf[u] || []) {
+        if (!descendants.has(cu)) { descendants.add(cu); stack.push(cu); }
+      }
+    }
+
+    // Assistant text from descendants only, in transcript order.
+    const texts: string[] = [];
+    for (const o of recs) {
+      if (o.type === 'assistant' && typeof o.uuid === 'string' && descendants.has(o.uuid)) {
+        texts.push(...assistantText(o));
+      }
+    }
+    return texts.join('\n\n').trim() || null;
   }
 
-  const reply = texts.join('\n\n').trim();
-  return reply || null;
+  // Fallback: injected turn not located — best-effort timestamp window.
+  for (const { full } of files.slice(0, 2)) {
+    let content = '';
+    try { content = fs.readFileSync(full, 'utf-8'); } catch { continue; }
+    const texts: string[] = [];
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      let o: Record<string, any>;
+      try { o = JSON.parse(t); } catch { continue; }
+      if (o.type !== 'assistant') continue;
+      const ts = typeof o.timestamp === 'string' ? Date.parse(o.timestamp) : 0;
+      if (!ts || ts < cutoff) continue;
+      texts.push(...assistantText(o));
+    }
+    if (texts.length) return texts.join('\n\n').trim() || null;
+  }
+  return null;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
@@ -232,6 +293,7 @@ export async function askAgentDispatch(
   }
 
   const base = {
+    projectId: project.id,
     projectName: project.name,
     agentName: agent.name,
     cli: agent.cli,
@@ -263,7 +325,10 @@ export async function askAgentDispatch(
     }
 
     await sleep(800); // let the final transcript line flush to disk
-    const reply = readClaudeReply(expandHome(agent.cwd), since);
+    // The text injectMessage wrote — used to locate our exact turn in the
+    // transcript so the reply is read from the right conversation branch.
+    const injectedText = `[Message from Hive Orchestrator]: ${message.replace(/\r/g, '').trim()}`;
+    const reply = readClaudeReply(expandHome(agent.cwd), since, injectedText);
     return { ok: true, status: reply ? 'replied' : 'no-reply', ...base, reply };
   }
 
@@ -439,6 +504,7 @@ export function readShared(projectRef: string, file?: string): SharedReadResult 
 // ─────────────────────────── broadcast ───────────────────────────
 
 export interface BroadcastReply {
+  projectId: string;
   projectName: string;
   agentName: string;
   cli: string;
@@ -496,6 +562,7 @@ export async function broadcastDispatch(
       try {
         const r = await askAgentDispatch(t.project.id, t.agent.id, message);
         return {
+          projectId: t.project.id,
           projectName: t.project.name,
           agentName: t.agent.name,
           cli: t.agent.cli,
@@ -504,6 +571,7 @@ export async function broadcastDispatch(
         };
       } catch {
         return {
+          projectId: t.project.id,
           projectName: t.project.name,
           agentName: t.agent.name,
           cli: t.agent.cli,

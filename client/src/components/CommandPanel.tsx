@@ -210,7 +210,7 @@ function BrainRow({ m }: { m: BrainMessage }) {
       );
     case 'tool':
       return (
-        <div className="cmd-tool">
+        <div className="cmd-tool" title={m.text || m.tool || 'tool'}>
           <Ic.bolt size={10} />
           <span className="cmd-tool-n">{m.tool || 'tool'}</span>
           {m.text && <span className="cmd-tool-a">{m.text}</span>}

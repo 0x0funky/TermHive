@@ -34,6 +34,7 @@ import {
   type DaemonRequest,
   type DaemonMessage,
   type BrainEvent,
+  type AgentDispatch,
 } from './protocol.js';
 
 const startedAt = new Date().toISOString();
@@ -114,6 +115,11 @@ function broadcastBrainEvent(ev: BrainEvent) {
   broadcast({ kind: 'event', event: 'brain:event', payload: ev });
 }
 const orchestrator = new Orchestrator(broadcastBrainEvent);
+
+/** Announce an orchestrator→agent dispatch so the web server can log it. */
+function emitAgentDispatch(d: AgentDispatch) {
+  broadcast({ kind: 'event', event: 'agent:dispatch', payload: d });
+}
 
 // ─────────────────────────── Terminal streaming ───────────────────────────
 
@@ -285,6 +291,17 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
         return;
       }
       const result = await askAgentDispatch(project, agent, message);
+      if (result.projectId && result.agentName) {
+        emitAgentDispatch({
+          projectId: result.projectId,
+          projectName: result.projectName || '',
+          agentName: result.agentName,
+          fromName: 'Hive Orchestrator',
+          message,
+          status: result.status,
+          reply: result.reply ?? null,
+        });
+      }
       sendJson(res, 200, result);
     } catch (err) {
       sendJson(res, 500, {
@@ -359,6 +376,17 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
         return;
       }
       const result = await broadcastDispatch(project, message);
+      for (const r of result.replies) {
+        emitAgentDispatch({
+          projectId: r.projectId,
+          projectName: r.projectName,
+          agentName: r.agentName,
+          fromName: 'Hive Orchestrator',
+          message,
+          status: r.status,
+          reply: r.reply ?? null,
+        });
+      }
       sendJson(res, 200, result);
     } catch (err) {
       sendJson(res, 500, {

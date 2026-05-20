@@ -12,11 +12,13 @@ import {
   type DaemonMessage,
   type DaemonRpcResults,
   type BrainEvent,
+  type AgentDispatch,
 } from './protocol.js';
 
 type OutputListener = (agentId: string, data: string) => void;
 type StatusListener = (agentId: string, status: string) => void;
 type BrainListener = (payload: BrainEvent) => void;
+type DispatchListener = (payload: AgentDispatch) => void;
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -31,6 +33,7 @@ export class DaemonClient {
   private readonly outputListeners = new Set<OutputListener>();
   private readonly statusListeners = new Set<StatusListener>();
   private readonly brainListeners = new Set<BrainListener>();
+  private readonly dispatchListeners = new Set<DispatchListener>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly outbox: string[] = []; // queued while disconnected
 
@@ -101,6 +104,8 @@ export class DaemonClient {
           for (const l of this.statusListeners) l(msg.agentId, msg.status);
         } else if (msg.event === 'brain:event') {
           for (const l of this.brainListeners) l(msg.payload);
+        } else if (msg.event === 'agent:dispatch') {
+          for (const l of this.dispatchListeners) l(msg.payload);
         }
         break;
     }
@@ -164,6 +169,10 @@ export class DaemonClient {
   onBrain(listener: BrainListener): () => void {
     this.brainListeners.add(listener);
     return () => this.brainListeners.delete(listener);
+  }
+  onDispatch(listener: DispatchListener): () => void {
+    this.dispatchListeners.add(listener);
+    return () => this.dispatchListeners.delete(listener);
   }
 
   /** Send a user message to the orchestrator brain (fire-and-forget). */
