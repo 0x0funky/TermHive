@@ -17,11 +17,15 @@ import { WebSocketServer, WebSocket } from 'ws';
 import * as ptyManager from '../pty-manager.js';
 import * as storage from '../storage.js';
 import { hookEventToStatus } from '../hook-config.js';
+import { Orchestrator } from './orchestrator.js';
+import { hookEvents } from './hook-events.js';
+import { orgSnapshot, askAgentDispatch } from './hive.js';
 import {
   DAEMON_HOST,
   DAEMON_PORT,
   type DaemonRequest,
   type DaemonMessage,
+  type BrainEvent,
 } from './protocol.js';
 
 const startedAt = new Date().toISOString();
@@ -87,6 +91,22 @@ function onAgentStatus(agentId: string, status: string) {
   setStatus(agentId, status);
 }
 
+/** Fine-grained status for one agent, with a process-liveness floor. */
+function liveStatus(agentId: string): string {
+  const s = agentStatus.get(agentId);
+  if (s) return s;
+  return ptyManager.isAgentRunning(agentId) ? 'running' : 'stopped';
+}
+
+// ─────────────────────────── Orchestrator brain ───────────────────────────
+// "The Keeper" — the v2.3 orchestrator. It lives in the daemon because the
+// daemon is the long-lived process that also owns the agents it dispatches to.
+
+function broadcastBrainEvent(ev: BrainEvent) {
+  broadcast({ kind: 'event', event: 'brain:event', payload: ev });
+}
+const orchestrator = new Orchestrator(broadcastBrainEvent);
+
 // ─────────────────────────── Terminal streaming ───────────────────────────
 
 function attachTerminal(ws: WebSocket, agentId: string) {
@@ -120,6 +140,11 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
       case 'terminal:detach': detachTerminal(ws, req.agentId); return;
       case 'terminal:input': ptyManager.writeToAgent(req.agentId, req.data); return;
       case 'terminal:resize': ptyManager.resizeAgent(req.agentId, req.cols, req.rows); return;
+      case 'brain:send':
+        orchestrator.send(req.message).catch((err) =>
+          console.error('[daemon] brain send error:', err));
+        return;
+      case 'brain:reset': orchestrator.reset(); return;
     }
     return;
   }
@@ -174,6 +199,8 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
         for (const [id, s] of agentStatus) statuses[id] = s;
         return reply({ statuses });
       }
+      case 'brain:state':
+        return reply(orchestrator.getState());
       default:
         return fail('Unknown op');
     }
@@ -182,35 +209,99 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
   }
 }
 
-// ─────────────────────────── HTTP hook endpoint ───────────────────────────
+// ─────────────────────────── HTTP endpoints ───────────────────────────
+// Two HTTP surfaces on the daemon port:
+//   POST /hook/:agentId/:event   — Claude lifecycle hooks → status engine
+//   GET  /org/snapshot           — Hive MCP: whole-hive view
+//   POST /org/ask-agent          — Hive MCP: dispatch a message to an agent
+//   GET  /health
 
-function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
+/** Collect a request body (capped to guard against runaway uploads). */
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > 1_000_000) { req.destroy(); reject(new Error('body too large')); }
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res: ServerResponse, status: number, obj: unknown) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(obj));
+}
+
+async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
   const url = httpReq.url || '';
-  // POST /hook/<agentId>/<event>
-  if (httpReq.method === 'POST' && url.startsWith('/hook/')) {
-    const parts = url.split('?')[0].split('/'); // ['', 'hook', agentId, event]
+  const route = url.split('?')[0];
+
+  // POST /hook/<agentId>/<event> — Claude lifecycle hooks
+  if (httpReq.method === 'POST' && route.startsWith('/hook/')) {
+    const parts = route.split('/'); // ['', 'hook', agentId, event]
     const agentId = parts[2];
     const event = parts[3];
-    const status = agentId && event ? hookEventToStatus(event) : null;
-    if (agentId && status && ptyManager.isAgentRunning(agentId)) {
-      setStatus(agentId, status);
+    if (agentId && event) {
+      // Feed the dispatch layer's turn detector (ask_agent) first.
+      hookEvents.emit('hook', agentId, event);
+      const status = hookEventToStatus(event);
+      if (status && ptyManager.isAgentRunning(agentId)) setStatus(agentId, status);
     }
     res.writeHead(204); // empty body — keeps `curl -s` output silent
     res.end();
     return;
   }
-  if (httpReq.method === 'GET' && url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, pid: process.pid, startedAt }));
+
+  // GET /org/snapshot — whole-hive view for the Hive Orchestrator MCP
+  if (httpReq.method === 'GET' && route === '/org/snapshot') {
+    sendJson(res, 200, orgSnapshot(liveStatus));
     return;
   }
+
+  // POST /org/ask-agent — dispatch a message to an agent and await its reply
+  if (httpReq.method === 'POST' && route === '/org/ask-agent') {
+    try {
+      const body = JSON.parse((await readBody(httpReq)) || '{}');
+      const project = String(body.project || '').trim();
+      const agent = String(body.agent || '').trim();
+      const message = String(body.message || '').trim();
+      if (!project || !agent || !message) {
+        sendJson(res, 400, {
+          ok: false, status: 'not-found',
+          error: 'project, agent, and message are required',
+        });
+        return;
+      }
+      const result = await askAgentDispatch(project, agent, message);
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false, status: 'not-found',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  if (httpReq.method === 'GET' && route === '/health') {
+    sendJson(res, 200, { ok: true, pid: process.pid, startedAt });
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 }
 
 // ─────────────────────────── Server bootstrap ───────────────────────────
 
-const httpServer = createServer(handleHttp);
+const httpServer = createServer((req, res) => {
+  handleHttp(req, res).catch((err) => {
+    console.error('[daemon] http error:', err);
+    try { res.writeHead(500); res.end(); } catch { /* already sent */ }
+  });
+});
 const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws) => {

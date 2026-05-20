@@ -44,12 +44,16 @@ export interface ProjectData {
   agents: Agent[];
 }
 
+import type { BrainEvent } from './daemon/protocol.js';
+
 // WebSocket message types
 export type WSClientMessage =
   | { type: 'terminal:attach'; agentId: string }
   | { type: 'terminal:input'; agentId: string; data: string }
   | { type: 'terminal:detach'; agentId: string }
-  | { type: 'terminal:resize'; agentId: string; cols: number; rows: number };
+  | { type: 'terminal:resize'; agentId: string; cols: number; rows: number }
+  | { type: 'brain:send'; message: string }
+  | { type: 'brain:reset' };
 
 export interface ActivityEvent {
   id: string;
@@ -78,4 +82,5 @@ export type WSServerMessage =
   | { type: 'terminal:output'; agentId: string; data: string }
   | { type: 'agent:status'; agentId: string; status: string }
   | { type: 'content:updated'; projectId: string; filename: string }
-  | { type: 'activity'; event: ActivityEvent };
+  | { type: 'activity'; event: ActivityEvent }
+  | { type: 'brain:event'; payload: BrainEvent };

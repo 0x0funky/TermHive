@@ -59,6 +59,11 @@ daemon.onStatus((agentId, status) => {
   broadcastStatus(agentId, status);
 });
 
+// Orchestrator brain events from the daemon → broadcast to all browsers
+daemon.onBrain((payload) => {
+  broadcast({ type: 'brain:event', payload });
+});
+
 // Wire activity feed to broadcast
 activity.setBroadcast((event: ActivityEvent) => {
   broadcast({ type: 'activity', event });
@@ -90,6 +95,16 @@ app.get('/api/usage', async (_req, res) => {
 // Daemon health endpoint
 app.get('/api/daemon/status', (_req, res) => {
   res.json({ connected: daemon.isConnected() });
+});
+
+// Orchestrator brain — conversation snapshot for the Command panel
+app.get('/api/brain', async (_req, res) => {
+  try {
+    const state = await daemon.request('brain:state');
+    res.json(state);
+  } catch {
+    res.status(503).json({ messages: [], status: 'idle', engine: 'codex' });
+  }
 });
 
 usage.startPolling();
@@ -162,6 +177,14 @@ wss.on('connection', (ws) => {
       }
       case 'terminal:resize': {
         daemon.resizeTerminal(msg.agentId, msg.cols, msg.rows);
+        break;
+      }
+      case 'brain:send': {
+        daemon.sendBrain(msg.message);
+        break;
+      }
+      case 'brain:reset': {
+        daemon.resetBrain();
         break;
       }
     }

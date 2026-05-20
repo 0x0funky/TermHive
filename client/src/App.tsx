@@ -6,6 +6,7 @@ import ActivityFeed from './components/ActivityFeed';
 import ProjectWiki from './components/ProjectWiki';
 import MessagesPanel from './components/MessagesPanel';
 import CommandPalette from './components/CommandPalette';
+import CommandPanel from './components/CommandPanel';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import Ic, { MOD } from './components/Icons';
@@ -33,6 +34,7 @@ export default function App() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>('terminals');
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem('termhive:theme') as Theme) || 'dark';
@@ -155,6 +157,10 @@ export default function App() {
         e.preventDefault(); e.stopPropagation();
         setPaletteOpen(true); return;
       }
+      if (mod && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault(); e.stopPropagation();
+        setCommandOpen((o) => !o); return;
+      }
       if (mod && /^[1-9]$/.test(e.key)) {
         e.preventDefault(); e.stopPropagation();
         const i = parseInt(e.key, 10) - 1;
@@ -162,7 +168,7 @@ export default function App() {
         if (a) setSelectedAgentId(a.id);
         return;
       }
-      if (e.key === 'Escape') setPaletteOpen(false);
+      if (e.key === 'Escape') { setPaletteOpen(false); setCommandOpen(false); }
     };
     window.addEventListener('keydown', onKey, { capture: true });
     return () => window.removeEventListener('keydown', onKey, { capture: true });
@@ -285,6 +291,15 @@ export default function App() {
             <Ic.search size={12} />
             <span>Search</span>
             <kbd>{MOD}K</kbd>
+          </button>
+          <button
+            className="hbtn kbd cmd-trigger"
+            title="Command — talk to the orchestrator brain"
+            onClick={() => setCommandOpen(true)}
+          >
+            <Ic.sparkles size={12} />
+            <span>Command</span>
+            <kbd>{MOD}J</kbd>
           </button>
           <div className="layout-seg" role="tablist" aria-label="Layout">
             {LAYOUT_ICONS.map(({ v, Icon, title }) => (
@@ -454,6 +469,7 @@ export default function App() {
         </div>
         <div className="st-r">
           <span className="st-kbd"><kbd>{MOD}K</kbd> palette</span>
+          <span className="st-kbd"><kbd>{MOD}J</kbd> command</span>
           <span className="st-kbd"><kbd>{MOD}1-5</kbd> agent</span>
           <span className="st-item ok">ws · connected</span>
         </div>
@@ -470,6 +486,12 @@ export default function App() {
         onNewAgent={() => setShowNewAgent(true)}
         onStartAll={selectedProjectId ? () => handleStartAll() : undefined}
         onStopAll={selectedProjectId ? () => handleStopAll() : undefined}
+      />
+
+      <CommandPanel
+        open={commandOpen}
+        onClose={() => setCommandOpen(false)}
+        wsRef={wsRef}
       />
 
       {showNewProject && (

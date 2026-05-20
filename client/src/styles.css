@@ -1489,3 +1489,166 @@ input, select, textarea { font-family: inherit; }
   .st { font-size: 9.5px; padding: 0 8px; gap: 10px; }
   .st-r .st-kbd { display: none; }
 }
+
+/* ==========================================================
+   Command panel — v2.3 orchestrator brain ("The Keeper")
+   ========================================================== */
+
+.cmd-trigger .ic-sparkle { color: var(--accent); }
+
+.cmd-scrim {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.42);
+  backdrop-filter: blur(2px);
+  z-index: 260;
+  animation: palette-in 0.12s ease-out;
+}
+.cmd-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(460px, 96vw);
+  background: var(--bg-1);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -16px 0 48px rgba(0,0,0,0.4);
+  display: flex; flex-direction: column;
+  z-index: 261;
+  animation: cmd-slide 0.16s ease-out;
+}
+@keyframes cmd-slide { from { transform: translateX(28px); opacity: 0; } }
+
+.cmd-h {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.cmd-h-l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cmd-mark {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.cmd-h-txt { min-width: 0; }
+.cmd-title { font-size: 13.5px; font-weight: 600; color: var(--text-0); letter-spacing: -0.005em; }
+.cmd-sub { font-size: 11px; color: var(--text-2); text-transform: capitalize; }
+.cmd-h-r { display: flex; align-items: center; gap: 2px; }
+
+.cmd-body {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 16px 8px;
+}
+
+/* Empty state */
+.cmd-intro { margin: auto; text-align: center; padding: 24px 8px; max-width: 320px; }
+.cmd-intro-mark {
+  width: 48px; height: 48px; border-radius: 12px; margin: 0 auto 14px;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+}
+.cmd-intro h3 { font-size: 15px; font-weight: 600; color: var(--text-0); margin-bottom: 6px; }
+.cmd-intro p { font-size: 12px; color: var(--text-2); line-height: 1.55; margin-bottom: 16px; }
+.cmd-egs { display: flex; flex-direction: column; gap: 6px; }
+.cmd-eg {
+  text-align: left; padding: 8px 11px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text-1); font-size: 12px; cursor: pointer;
+}
+.cmd-eg:hover { background: var(--bg-3); color: var(--text-0); border-color: var(--border-strong); }
+
+/* Messages */
+.cmd-msg { display: flex; gap: 8px; max-width: 100%; }
+.cmd-msg.user { justify-content: flex-end; }
+.cmd-msg.brain { justify-content: flex-start; }
+.cmd-avatar {
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center; margin-top: 2px;
+}
+.cmd-bubble {
+  padding: 9px 12px; border-radius: 10px;
+  font-size: 12.5px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word;
+  max-width: 86%;
+}
+.cmd-msg.user .cmd-bubble {
+  background: var(--accent-soft); color: var(--text-0);
+  border: 1px solid var(--border); border-bottom-right-radius: 3px;
+}
+.cmd-msg.brain .cmd-bubble {
+  background: var(--bg-2); color: var(--text-0);
+  border: 1px solid var(--border); border-bottom-left-radius: 3px;
+}
+
+/* Tool call rows */
+.cmd-tool {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 9px; margin-left: 30px;
+  font-size: 11px; color: var(--text-2);
+  border-left: 2px solid var(--border-strong);
+}
+.cmd-tool svg { color: var(--accent); flex-shrink: 0; }
+.cmd-tool-n { font-family: var(--ff-mono); color: var(--text-1); font-size: 10.5px; }
+.cmd-tool-a {
+  font-family: var(--ff-mono); font-size: 10px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Reasoning — the brain thinking out loud */
+.cmd-reasoning {
+  margin-left: 30px; padding: 2px 0;
+  font-size: 11.5px; font-style: italic; line-height: 1.5;
+  color: var(--text-3); white-space: pre-wrap; word-break: break-word;
+}
+
+.cmd-err {
+  padding: 9px 12px; border-radius: 8px;
+  background: var(--err-soft); color: var(--err);
+  font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+.cmd-system {
+  text-align: center; font-size: 11px; color: var(--text-3);
+  padding: 2px 8px;
+}
+
+/* Thinking indicator */
+.cmd-thinking {
+  display: flex; align-items: center; gap: 6px;
+  margin-left: 30px; font-size: 11.5px; color: var(--text-2);
+}
+.cmd-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent); display: inline-block;
+  animation: cmd-pulse 1.1s ease-in-out infinite;
+}
+.cmd-dot:nth-child(2) { animation-delay: 0.16s; }
+.cmd-dot:nth-child(3) { animation-delay: 0.32s; }
+@keyframes cmd-pulse {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* Composer */
+.cmd-compose {
+  display: flex; align-items: flex-end; gap: 8px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-1);
+}
+.cmd-compose textarea {
+  flex: 1; resize: none;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 11px; color: var(--text-0);
+  font-family: var(--ff-sans); font-size: 12.5px; line-height: 1.5;
+  outline: none; max-height: 160px;
+}
+.cmd-compose textarea:focus { border-color: var(--accent); }
+.cmd-compose textarea::placeholder { color: var(--text-3); }
+.cmd-send {
+  width: 34px; height: 34px; flex-shrink: 0;
+  background: var(--accent); color: #0a0a0a;
+  border: none; border-radius: 8px;
+  display: grid; place-items: center; cursor: pointer;
+}
+.cmd-send:hover { background: var(--accent-hover); }
+.cmd-send:disabled { opacity: 0.4; cursor: not-allowed; }

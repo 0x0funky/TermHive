@@ -436,11 +436,16 @@ export function injectMessage(targetAgentId: string, fromName: string, message: 
   const session = sessions.get(targetAgentId);
   if (!session) return false;
 
-  // Single-line banner + message body. Terminating with Enter so most CLIs
-  // treat it as a submitted user message rather than pending input.
+  // Write the banner text first, then send Enter as a SEPARATE keystroke a
+  // beat later. Claude Code's TUI treats a CR that arrives in the same burst
+  // as the text as a literal newline (it looks like a multi-line paste) — only
+  // a standalone CR is read as the Enter key that actually submits the prompt.
   const clean = message.replace(/\r/g, '').trim();
-  const payload = `[Message from ${fromName}]: ${clean}\r`;
-  session.pty.write(payload);
+  session.pty.write(`[Message from ${fromName}]: ${clean}`);
+  setTimeout(() => {
+    const s = sessions.get(targetAgentId);
+    if (s) s.pty.write('\r');
+  }, 150);
   return true;
 }
 
