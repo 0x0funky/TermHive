@@ -5,9 +5,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRouter } from './routes.js';
 import * as storage from './storage.js';
-import * as ptyManager from './pty-manager.js';
 import * as activity from './activity.js';
 import * as usage from './usage.js';
+import { DaemonClient } from './daemon/client.js';
 import type { WSClientMessage, WSServerMessage, ActivityEvent } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,15 +19,20 @@ app.use(express.json());
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-// Track all connected clients
+// --- Daemon connection — the daemon owns every agent PTY ---
+const daemon = new DaemonClient();
+daemon.connect();
+
+// Track all connected browser clients
 const clients = new Set<WebSocket>();
+
+// agentId → browser sockets currently watching that agent's terminal
+const subscribers = new Map<string, Set<WebSocket>>();
 
 function broadcast(msg: WSServerMessage) {
   const data = JSON.stringify(msg);
   for (const ws of clients) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(data);
-    }
+    if (ws.readyState === WebSocket.OPEN) ws.send(data);
   }
 }
 
@@ -39,10 +44,24 @@ function broadcastContentUpdate(projectId: string, filename: string) {
   broadcast({ type: 'content:updated', projectId, filename });
 }
 
+// Terminal output from the daemon → fan out to the browsers watching that agent
+daemon.onOutput((agentId, data) => {
+  const subs = subscribers.get(agentId);
+  if (!subs) return;
+  const frame = JSON.stringify({ type: 'terminal:output', agentId, data } satisfies WSServerMessage);
+  for (const ws of subs) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(frame);
+  }
+});
+
+// Agent status changes from the daemon → broadcast to all browsers
+daemon.onStatus((agentId, status) => {
+  broadcastStatus(agentId, status);
+});
+
 // Wire activity feed to broadcast
 activity.setBroadcast((event: ActivityEvent) => {
   broadcast({ type: 'activity', event });
-  // Also broadcast content:updated when files change so Shared Content tab auto-refreshes
   if (event.event.startsWith('content:')) {
     broadcastContentUpdate(event.projectId, event.detail.split(': ')[1] || '');
   }
@@ -54,7 +73,7 @@ for (const project of storage.listProjects()) {
 }
 
 // API routes
-app.use('/api', createRouter(broadcastStatus, broadcastContentUpdate));
+app.use('/api', createRouter(daemon, broadcastStatus, broadcastContentUpdate));
 
 // Activity feed REST endpoint
 app.get('/api/activity', (req, res) => {
@@ -68,7 +87,11 @@ app.get('/api/usage', async (_req, res) => {
   res.json(data);
 });
 
-// Start usage polling
+// Daemon health endpoint
+app.get('/api/daemon/status', (_req, res) => {
+  res.json({ connected: daemon.isConnected() });
+});
+
 usage.startPolling();
 
 // Serve static frontend in production
@@ -78,12 +101,11 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
-// --- Graceful shutdown: kill all PTY sessions before exit ---
+// --- Graceful shutdown ---
+// The web server NO LONGER kills agents — the daemon owns them and outlives us.
+// We just exit cleanly; agents keep running for the next web start to reattach.
 function gracefulShutdown(signal: string) {
-  console.log(`[server] ${signal} received — killing all PTY sessions...`);
-  for (const agentId of ptyManager.getRunningAgentIds()) {
-    try { ptyManager.stopAgent(agentId); } catch { /* best-effort */ }
-  }
+  console.log(`[server] ${signal} received — shutting down web server (agents stay alive in daemon)`);
   process.exit(0);
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -93,20 +115,18 @@ if (process.platform === 'win32') {
   process.on('SIGBREAK', () => gracefulShutdown('SIGBREAK'));
 }
 
-// --- Startup cleanup: reset stale "running" agents from previous crashes ---
-for (const project of storage.listProjects()) {
-  for (const agent of storage.listAgents(project.id)) {
-    if (agent.status === 'running') {
-      storage.updateAgent(project.id, agent.id, { status: 'stopped', pid: undefined });
-      console.log(`[server] Reset stale agent: ${agent.name} (${agent.id.slice(0, 8)})`);
+// --- WebSocket handling (browser ↔ web server) ---
+function unsubscribeAll(ws: WebSocket) {
+  for (const [agentId, subs] of subscribers) {
+    if (subs.delete(ws) && subs.size === 0) {
+      subscribers.delete(agentId);
+      daemon.detachTerminal(agentId);
     }
   }
 }
 
-// WebSocket handling
 wss.on('connection', (ws) => {
   clients.add(ws);
-  const agentListeners = new Map<string, (data: string) => void>();
 
   ws.on('message', (raw) => {
     let msg: WSClientMessage;
@@ -118,39 +138,30 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'terminal:attach': {
-        // Fix: remove existing listener before adding new one (prevents leak on re-attach)
-        const existing = agentListeners.get(msg.agentId);
-        if (existing) {
-          ptyManager.removeOutputListener(msg.agentId, existing);
+        let subs = subscribers.get(msg.agentId);
+        if (!subs) {
+          subs = new Set();
+          subscribers.set(msg.agentId, subs);
         }
-
-        const listener = (data: string) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'terminal:output',
-              agentId: msg.agentId,
-              data,
-            } satisfies WSServerMessage));
-          }
-        };
-        agentListeners.set(msg.agentId, listener);
-        ptyManager.addOutputListener(msg.agentId, listener);
+        subs.add(ws);
+        // Ask the daemon to (re)stream this agent — it replays the scroll buffer.
+        daemon.attachTerminal(msg.agentId);
         break;
       }
       case 'terminal:detach': {
-        const listener = agentListeners.get(msg.agentId);
-        if (listener) {
-          ptyManager.removeOutputListener(msg.agentId, listener);
-          agentListeners.delete(msg.agentId);
+        const subs = subscribers.get(msg.agentId);
+        if (subs && subs.delete(ws) && subs.size === 0) {
+          subscribers.delete(msg.agentId);
+          daemon.detachTerminal(msg.agentId);
         }
         break;
       }
       case 'terminal:input': {
-        ptyManager.writeToAgent(msg.agentId, msg.data);
+        daemon.writeTerminal(msg.agentId, msg.data);
         break;
       }
       case 'terminal:resize': {
-        ptyManager.resizeAgent(msg.agentId, msg.cols, msg.rows);
+        daemon.resizeTerminal(msg.agentId, msg.cols, msg.rows);
         break;
       }
     }
@@ -158,13 +169,11 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     clients.delete(ws);
-    for (const [agentId, listener] of agentListeners) {
-      ptyManager.removeOutputListener(agentId, listener);
-    }
-    agentListeners.clear();
+    unsubscribeAll(ws);
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`Termhive server running on http://localhost:${PORT}`);
+  console.log(`Termhive web server running on http://localhost:${PORT}`);
+  console.log(`[server] daemon: ${daemon.isConnected() ? 'connected' : 'connecting…'}`);
 });

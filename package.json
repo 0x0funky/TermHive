@@ -10,7 +10,9 @@
     "build": "tsup && vite build",
     "build:server": "tsup",
     "build:client": "vite build",
-    "start": "node dist/server.js"
+    "daemon": "node dist/daemon/daemon.js",
+    "start": "node dist/server.js",
+    "start:all": "concurrently -n daemon,web \"npm run daemon\" \"npm run start\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

@@ -1,10 +1,29 @@
 import { Router, type Request, type Response } from 'express';
 import * as storage from './storage.js';
-import * as ptyManager from './pty-manager.js';
 import * as activity from './activity.js';
+import type { DaemonClient } from './daemon/client.js';
 
-export function createRouter(broadcastStatus: (agentId: string, status: string) => void, broadcastContentUpdate: (projectId: string, filename: string) => void) {
+/**
+ * REST API. Agent runtime operations (start/stop/status/inject) are delegated
+ * to termhive-daemon over `daemon` — the web server no longer owns PTYs.
+ */
+export function createRouter(
+  daemon: DaemonClient,
+  broadcastStatus: (agentId: string, status: string) => void,
+  broadcastContentUpdate: (projectId: string, filename: string) => void,
+) {
   const router = Router();
+
+  /** Fetch the set of currently-running agent ids from the daemon.
+   *  If the daemon is unreachable, nothing is running (it owns every PTY). */
+  async function runningIds(): Promise<Set<string>> {
+    try {
+      const r = await daemon.request('agent:runningIds');
+      return new Set(r.ids);
+    } catch {
+      return new Set();
+    }
+  }
 
   // --- Projects ---
   router.get('/projects', (_req: Request, res: Response) => {
@@ -37,21 +56,26 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
   });
 
   // --- Agents ---
-  router.get('/projects/:id/agents', (req: Request, res: Response) => {
+  router.get('/projects/:id/agents', async (req: Request, res: Response) => {
     const agents = storage.listAgents(req.params.id);
-    // Sync running status
+    const running = await runningIds();
     for (const agent of agents) {
-      agent.status = ptyManager.isAgentRunning(agent.id) ? 'running' : 'stopped';
+      agent.status = running.has(agent.id) ? 'running' : 'stopped';
     }
     res.json(agents);
   });
 
-  router.get('/projects/:id/agents/previews', (req: Request, res: Response) => {
+  router.get('/projects/:id/agents/previews', async (req: Request, res: Response) => {
     const agents = storage.listAgents(req.params.id);
     const previews: Record<string, string> = {};
-    for (const agent of agents) {
-      previews[agent.id] = ptyManager.getAgentPreview(agent.id);
-    }
+    await Promise.all(agents.map(async (agent) => {
+      try {
+        const r = await daemon.request('agent:preview', { agentId: agent.id });
+        previews[agent.id] = r.preview;
+      } catch {
+        previews[agent.id] = '';
+      }
+    }));
     res.json(previews);
   });
 
@@ -75,10 +99,12 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     res.json(agent);
   });
 
-  router.delete('/projects/:id/agents/:aid', (req: Request, res: Response) => {
+  router.delete('/projects/:id/agents/:aid', async (req: Request, res: Response) => {
     const agent = storage.getAgent(req.params.id, req.params.aid);
-    ptyManager.stopAgent(req.params.aid);
-    if (agent) ptyManager.cleanupMcpConfig(agent);
+    try {
+      await daemon.request('agent:stop', { agentId: req.params.aid });
+      if (agent) await daemon.request('agent:cleanup', { projectId: req.params.id, agentId: req.params.aid });
+    } catch { /* daemon down — agent already not running */ }
     if (!storage.deleteAgent(req.params.id, req.params.aid)) {
       res.status(404).json({ error: 'Agent not found' });
       return;
@@ -87,10 +113,11 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
   });
 
   // --- Teammates (list other agents the given agent can message) ---
-  router.get('/projects/:id/agents/:aid/teammates', (req: Request, res: Response) => {
+  router.get('/projects/:id/agents/:aid/teammates', async (req: Request, res: Response) => {
     const all = storage.listAgents(req.params.id);
     const self = all.find(a => a.id === req.params.aid);
     if (!self) { res.status(404).json({ error: 'Agent not found' }); return; }
+    const running = await runningIds();
     const teammates = all
       .filter(a => a.id !== self.id)
       .map(a => ({
@@ -98,13 +125,13 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
         name: a.name,
         role: a.role,
         cli: a.cli,
-        status: ptyManager.isAgentRunning(a.id) ? 'running' : 'stopped',
+        status: running.has(a.id) ? 'running' : 'stopped',
       }));
     res.json({ self: { id: self.id, name: self.name, role: self.role }, teammates });
   });
 
   // --- Agent-to-agent messaging (called by MCP server) ---
-  router.post('/projects/:id/messages', (req: Request, res: Response) => {
+  router.post('/projects/:id/messages', async (req: Request, res: Response) => {
     const { fromAgentId, fromAgentName, target, message } = req.body || {};
     if (!fromAgentId || !target || !message) {
       res.status(400).json({ error: 'fromAgentId, target, and message are required' });
@@ -119,7 +146,6 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     const targetNorm = String(target).trim().toLowerCase();
     const matches = agents.filter(a => a.id !== sender.id && a.name.toLowerCase() === targetNorm);
     if (matches.length === 0) {
-      // Try a more forgiving match: name contains target or role contains target
       const fuzzy = agents.filter(a =>
         a.id !== sender.id &&
         (a.name.toLowerCase().includes(targetNorm) || (a.role || '').toLowerCase().includes(targetNorm))
@@ -138,14 +164,20 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     }
     if (matches.length > 1) {
       res.status(400).json({
-        error: `Multiple agents named "${target}" — rename one to disambiguate: ${matches.map(a => `${a.name} (${a.id.slice(0,8)})`).join(', ')}`,
+        error: `Multiple agents named "${target}" — rename one to disambiguate: ${matches.map(a => `${a.name} (${a.id.slice(0, 8)})`).join(', ')}`,
       });
       return;
     }
 
     const recipient = matches[0];
     const fromName = fromAgentName || sender.name;
-    const delivered = ptyManager.injectMessage(recipient.id, fromName, String(message));
+    let delivered = false;
+    try {
+      const r = await daemon.request('agent:inject', {
+        agentId: recipient.id, fromName, message: String(message),
+      });
+      delivered = r.delivered;
+    } catch { /* daemon down */ }
 
     activity.pushEvent({
       projectId: req.params.id,
@@ -158,43 +190,46 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
       message: String(message),
     });
 
-    res.json({
-      delivered,
-      toAgentId: recipient.id,
-      toAgentName: recipient.name,
-    });
+    res.json({ delivered, toAgentId: recipient.id, toAgentName: recipient.name });
   });
 
-  router.post('/projects/:id/agents/:aid/start', (req: Request, res: Response) => {
+  router.post('/projects/:id/agents/:aid/start', async (req: Request, res: Response) => {
     const agent = storage.getAgent(req.params.id, req.params.aid);
     if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
-    const ok = ptyManager.startAgent(agent, broadcastStatus);
-    if (!ok) { res.status(500).json({ error: 'Failed to start agent' }); return; }
+    try {
+      const r = await daemon.request('agent:start', { projectId: req.params.id, agentId: agent.id });
+      if (!r.ok) { res.status(500).json({ error: 'Failed to start agent' }); return; }
+    } catch (err) {
+      res.status(503).json({ error: 'Daemon unavailable: ' + (err instanceof Error ? err.message : String(err)) });
+      return;
+    }
     activity.pushEvent({ projectId: req.params.id, agentId: agent.id, agentName: agent.name, event: 'agent:started', detail: `${agent.name} (${agent.cli}) started` });
-    // Start watching shared content for this project
     const projectData = storage.getProjectData(req.params.id);
     if (projectData) activity.watchProject(req.params.id, projectData.project.name);
     res.json({ status: 'running' });
   });
 
-  router.post('/projects/:id/agents/:aid/stop', (req: Request, res: Response) => {
+  router.post('/projects/:id/agents/:aid/stop', async (req: Request, res: Response) => {
     const agent = storage.getAgent(req.params.id, req.params.aid);
     if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
-    ptyManager.stopAgent(agent.id);
+    try {
+      await daemon.request('agent:stop', { agentId: agent.id });
+    } catch { /* daemon down — treat as stopped */ }
     storage.updateAgent(req.params.id, req.params.aid, { status: 'stopped', pid: undefined });
     broadcastStatus(agent.id, 'stopped');
     activity.pushEvent({ projectId: req.params.id, agentId: agent.id, agentName: agent.name, event: 'agent:stopped', detail: `${agent.name} stopped` });
     res.json({ status: 'stopped' });
   });
 
-  router.post('/projects/:id/agents/:aid/restart', (req: Request, res: Response) => {
+  router.post('/projects/:id/agents/:aid/restart', async (req: Request, res: Response) => {
     const agent = storage.getAgent(req.params.id, req.params.aid);
     if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
-    ptyManager.stopAgent(agent.id);
-    setTimeout(() => {
-      const freshAgent = storage.getAgent(req.params.id, req.params.aid);
-      if (freshAgent) ptyManager.startAgent(freshAgent, broadcastStatus);
-    }, 500);
+    try {
+      await daemon.request('agent:restart', { projectId: req.params.id, agentId: agent.id });
+    } catch (err) {
+      res.status(503).json({ error: 'Daemon unavailable: ' + (err instanceof Error ? err.message : String(err)) });
+      return;
+    }
     res.json({ status: 'restarting' });
   });
 
@@ -234,7 +269,7 @@ export function createRouter(broadcastStatus: (agentId: string, status: string) 
     res.status(204).end();
   });
 
-  // --- Project Memory ---
+  // --- Project Wiki ---
   router.get('/projects/:id/wiki/status', (req: Request, res: Response) => {
     res.json({ initialized: storage.isWikiInitialized(req.params.id) });
   });
