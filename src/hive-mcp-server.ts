@@ -71,6 +71,39 @@ interface StartResult {
   error?: string;
 }
 
+interface WikiResult {
+  ok: boolean;
+  projectName?: string;
+  initialized?: boolean;
+  pages?: string[];
+  page?: string;
+  content?: string;
+  error?: string;
+}
+
+interface SharedResult {
+  ok: boolean;
+  projectName?: string;
+  files?: string[];
+  file?: string;
+  content?: string;
+  error?: string;
+}
+
+interface BroadcastBody {
+  ok: boolean;
+  projectName?: string;
+  error?: string;
+  replies?: Array<{
+    projectName: string;
+    agentName: string;
+    cli: string;
+    status: string;
+    reply?: string | null;
+  }>;
+  skipped?: Array<{ projectName: string; agentName: string; reason: string }>;
+}
+
 /** Plain fetch with an upper-bound timeout so a dead daemon never hangs us. */
 async function daemonFetch(
   url: string,
@@ -165,6 +198,54 @@ async function main() {
         },
       },
       {
+        name: 'get_project_overview',
+        description:
+          'Read a project\'s wiki overview — a quick summary of what the project ' +
+          'is and its current state. Use this to understand a project before ' +
+          'digging into its agents.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project: { type: 'string', description: 'Project name or id.' },
+          },
+          required: ['project'],
+        },
+      },
+      {
+        name: 'read_wiki',
+        description:
+          'Read a project\'s wiki (its knowledge base). Omit `page` to list the ' +
+          'available pages; pass a `page` filename to read that page\'s content.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project: { type: 'string', description: 'Project name or id.' },
+            page: {
+              type: 'string',
+              description: 'Wiki page filename (e.g. "architecture.md"). Omit to list pages.',
+            },
+          },
+          required: ['project'],
+        },
+      },
+      {
+        name: 'read_shared',
+        description:
+          'Read a project\'s shared content files — the docs and notes agents ' +
+          'and the user exchange. Omit `file` to list files; pass a `file` to read it.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project: { type: 'string', description: 'Project name or id.' },
+            file: {
+              type: 'string',
+              description: 'Shared file path (e.g. "api-spec.md"). Omit to list files.',
+            },
+          },
+          required: ['project'],
+        },
+      },
+      {
         name: 'start_agent',
         description:
           'Start a stopped agent so it can be reached. Call this before ' +
@@ -201,6 +282,28 @@ async function main() {
             },
           },
           required: ['project', 'agent', 'message'],
+        },
+      },
+      {
+        name: 'broadcast',
+        description:
+          'Ask every running agent the same question at once and collect all ' +
+          'their replies. Optionally scope to one project. Stopped agents are ' +
+          'skipped (not started). Use this for hive-wide status checks like ' +
+          '"what is everyone working on right now".',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            message: {
+              type: 'string',
+              description: 'The question or instruction to send to every running agent.',
+            },
+            project: {
+              type: 'string',
+              description: 'Optional — limit the broadcast to one project (name or id).',
+            },
+          },
+          required: ['message'],
         },
       },
     ],
@@ -259,6 +362,64 @@ async function main() {
         if (!ag) return err(`No agent matching "${agent}" in ${proj.name}.`);
         const role = ag.role ? `, role: ${ag.role}` : '';
         return text(`${ag.name} (${ag.cli}${role}) in ${proj.name} — status: ${ag.status}`);
+      }
+
+      if (name === 'get_project_overview') {
+        const project = String(a.project || '').trim();
+        if (!project) return err('project is required.');
+        const res = await daemonFetch(
+          `${args.daemonUrl}/org/wiki?project=${encodeURIComponent(project)}&overview=1`,
+          undefined, 8000,
+        );
+        const body = (await res.json().catch(() => ({}))) as WikiResult;
+        if (!body.ok) return err(body.error || `Could not read overview for "${project}".`);
+        if (body.initialized === false) {
+          return text(
+            `${body.projectName}: wiki not initialized.` +
+            (body.content ? `\nProject description: ${body.content}` : ''),
+          );
+        }
+        return text(
+          `${body.projectName} — overview${body.page ? ` (${body.page})` : ''}:\n\n` +
+          (body.content || '(empty)'),
+        );
+      }
+
+      if (name === 'read_wiki') {
+        const project = String(a.project || '').trim();
+        const page = a.page ? String(a.page).trim() : '';
+        if (!project) return err('project is required.');
+        let qs = `project=${encodeURIComponent(project)}`;
+        if (page) qs += `&page=${encodeURIComponent(page)}`;
+        const res = await daemonFetch(`${args.daemonUrl}/org/wiki?${qs}`, undefined, 8000);
+        const body = (await res.json().catch(() => ({}))) as WikiResult;
+        if (!body.ok) return err(body.error || `Could not read wiki for "${project}".`);
+        if (body.initialized === false) {
+          return text(`${body.projectName}: wiki not initialized.`);
+        }
+        if (page) {
+          return text(`${body.projectName} wiki — ${body.page}:\n\n` + (body.content || '(empty)'));
+        }
+        const pages = body.pages || [];
+        if (pages.length === 0) return text(`${body.projectName} wiki has no pages.`);
+        return text(`${body.projectName} wiki pages:\n` + pages.map((p) => `- ${p}`).join('\n'));
+      }
+
+      if (name === 'read_shared') {
+        const project = String(a.project || '').trim();
+        const file = a.file ? String(a.file).trim() : '';
+        if (!project) return err('project is required.');
+        let qs = `project=${encodeURIComponent(project)}`;
+        if (file) qs += `&file=${encodeURIComponent(file)}`;
+        const res = await daemonFetch(`${args.daemonUrl}/org/shared?${qs}`, undefined, 8000);
+        const body = (await res.json().catch(() => ({}))) as SharedResult;
+        if (!body.ok) return err(body.error || `Could not read shared content for "${project}".`);
+        if (file) {
+          return text(`${body.projectName} shared — ${body.file}:\n\n` + (body.content || '(empty)'));
+        }
+        const files = body.files || [];
+        if (files.length === 0) return text(`${body.projectName} has no shared content files.`);
+        return text(`${body.projectName} shared files:\n` + files.map((f) => `- ${f}`).join('\n'));
       }
 
       if (name === 'start_agent') {
@@ -342,6 +503,43 @@ async function main() {
           default:
             return err(body.error || `ask_agent failed (${body.status || 'unknown'}).`);
         }
+      }
+
+      if (name === 'broadcast') {
+        const message = String(a.message || '').trim();
+        const project = a.project ? String(a.project).trim() : '';
+        if (!message) return err('message is required.');
+        const res = await daemonFetch(
+          `${args.daemonUrl}/org/broadcast`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, project: project || undefined }),
+          },
+          200_000,
+        );
+        const body = (await res.json().catch(() => ({}))) as BroadcastBody;
+        const replies = body.replies || [];
+        const skipped = body.skipped || [];
+        const skippedLine = skipped.length
+          ? `\n\nSkipped (not running): ${skipped.map((s) => `${s.agentName} (${s.projectName})`).join(', ')}`
+          : '';
+
+        if (replies.length === 0) {
+          return text((body.error || 'No running agents to broadcast to.') + skippedLine);
+        }
+        const blocks = replies.map((r) => {
+          const head = `## ${r.agentName} (${r.projectName}) — ${r.status}`;
+          if (r.status === 'replied' && r.reply) return `${head}\n${r.reply}`;
+          if (r.status === 'delivered') {
+            return `${head}\n(delivered; reply capture not supported for ${r.cli} agents)`;
+          }
+          if (r.status === 'timeout') return `${head}\n(still working — no reply captured yet)`;
+          return head;
+        });
+        return text(
+          `Broadcast to ${replies.length} agent(s):\n\n` + blocks.join('\n\n') + skippedLine,
+        );
       }
 
       return err(`Unknown tool: ${name}`);

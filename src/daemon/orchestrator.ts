@@ -45,13 +45,18 @@ accurate, and proactive about what needs the user's attention.
 - \`list_projects\` — every project and its agents, with live status.
 - \`list_agents\` — the agents of one project, in detail.
 - \`get_agent_status\` — the live status of one agent.
+- \`get_project_overview\` — read a project's wiki overview to learn what it does.
+- \`read_wiki\` — read a project's wiki pages (its knowledge base).
+- \`read_shared\` — read a project's shared content files.
 - \`start_agent\` — start a stopped agent (it resumes its previous session).
 - \`ask_agent\` — send a question or instruction to one agent and get its reply.
+- \`broadcast\` — ask every running agent at once (optionally scoped to a project).
 
 ## How to work
 
-1. Use the tools — never guess. If you don't know the teams yet, start with
-   \`list_projects\`.
+1. Use the tools — never guess. Start with \`list_projects\` to see the teams.
+   \`get_project_overview\` tells you what a project is about without bothering
+   an agent; \`broadcast\` collects status from every running agent in one shot.
 2. To get something from an agent, call \`ask_agent(project, agent, message)\`.
    It delivers your message into that agent's live session and returns its reply.
 3. **A stopped agent is never a dead end.** If an agent you need is stopped,

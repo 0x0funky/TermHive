@@ -355,3 +355,164 @@ export async function startAgentDispatch(
   await waitForAgentReady(agent.id, agent.cli);
   return { ok: true, status: 'started', ...base };
 }
+
+// ─────────────────────── Knowledge base reads ───────────────────────
+
+export interface WikiReadResult {
+  ok: boolean;
+  projectName?: string;
+  initialized?: boolean;
+  /** Present when listing pages. */
+  pages?: string[];
+  /** Present when reading one page (or the overview). */
+  page?: string;
+  content?: string;
+  error?: string;
+}
+
+/** Read a project's wiki — a page if given, otherwise the page list. */
+export function readWiki(projectRef: string, page?: string): WikiReadResult {
+  const project = resolveProject(projectRef);
+  if (!project) return { ok: false, error: `No project matching "${projectRef}".` };
+  if (!storage.isWikiInitialized(project.id)) {
+    return { ok: true, projectName: project.name, initialized: false, pages: [] };
+  }
+  if (page) {
+    const file = storage.getWikiFile(project.id, page);
+    if (!file) {
+      return { ok: false, projectName: project.name, error: `No wiki page "${page}" in ${project.name}.` };
+    }
+    return { ok: true, projectName: project.name, initialized: true, page, content: file.content };
+  }
+  const pages = storage.listWikiFiles(project.id).map((w) => w.filename).sort();
+  return { ok: true, projectName: project.name, initialized: true, pages };
+}
+
+/** Read a project's wiki overview — the "what is this project" summary. */
+export function projectOverview(projectRef: string): WikiReadResult {
+  const project = resolveProject(projectRef);
+  if (!project) return { ok: false, error: `No project matching "${projectRef}".` };
+  if (!storage.isWikiInitialized(project.id)) {
+    return {
+      ok: true,
+      projectName: project.name,
+      initialized: false,
+      content: project.description || '',
+    };
+  }
+  const overview =
+    storage.getWikiFile(project.id, 'overview.md') ||
+    storage.getWikiFile(project.id, '_index.md');
+  return {
+    ok: true,
+    projectName: project.name,
+    initialized: true,
+    page: overview?.filename,
+    content: overview?.content || '',
+  };
+}
+
+export interface SharedReadResult {
+  ok: boolean;
+  projectName?: string;
+  files?: string[];
+  file?: string;
+  content?: string;
+  error?: string;
+}
+
+/** Read a project's shared content — a file if given, otherwise the file list. */
+export function readShared(projectRef: string, file?: string): SharedReadResult {
+  const project = resolveProject(projectRef);
+  if (!project) return { ok: false, error: `No project matching "${projectRef}".` };
+  if (file) {
+    const item = storage.getContent(project.id, file);
+    if (!item) {
+      return { ok: false, projectName: project.name, error: `No shared file "${file}" in ${project.name}.` };
+    }
+    return { ok: true, projectName: project.name, file, content: item.content };
+  }
+  const files = storage.listContent(project.id).map((c) => c.filename).sort();
+  return { ok: true, projectName: project.name, files };
+}
+
+// ─────────────────────────── broadcast ───────────────────────────
+
+export interface BroadcastReply {
+  projectName: string;
+  agentName: string;
+  cli: string;
+  status: string;
+  reply?: string | null;
+}
+export interface BroadcastResult {
+  ok: boolean;
+  projectName?: string;
+  error?: string;
+  replies: BroadcastReply[];
+  skipped: Array<{ projectName: string; agentName: string; reason: string }>;
+}
+
+/**
+ * Ask every running agent at once — optionally scoped to one project. Stopped
+ * agents are skipped (not auto-started: a broadcast should not spin up the
+ * whole hive); the brain can start specific ones if it needs them.
+ */
+export async function broadcastDispatch(
+  projectRef: string | undefined,
+  message: string,
+): Promise<BroadcastResult> {
+  const targets: Array<{ project: Project; agent: Agent }> = [];
+  if (projectRef) {
+    const project = resolveProject(projectRef);
+    if (!project) {
+      return { ok: false, error: `No project matching "${projectRef}".`, replies: [], skipped: [] };
+    }
+    for (const agent of storage.listAgents(project.id)) targets.push({ project, agent });
+  } else {
+    for (const project of storage.listProjects()) {
+      for (const agent of storage.listAgents(project.id)) targets.push({ project, agent });
+    }
+  }
+
+  const running = targets.filter((t) => ptyManager.isAgentRunning(t.agent.id));
+  const skipped = targets
+    .filter((t) => !ptyManager.isAgentRunning(t.agent.id))
+    .map((t) => ({ projectName: t.project.name, agentName: t.agent.name, reason: 'not running' }));
+
+  const scopeName = projectRef ? targets[0]?.project.name : undefined;
+  if (running.length === 0) {
+    return {
+      ok: true,
+      projectName: scopeName,
+      error: 'No running agents to broadcast to.',
+      replies: [],
+      skipped,
+    };
+  }
+
+  const replies = await Promise.all(
+    running.map(async (t): Promise<BroadcastReply> => {
+      try {
+        const r = await askAgentDispatch(t.project.id, t.agent.id, message);
+        return {
+          projectName: t.project.name,
+          agentName: t.agent.name,
+          cli: t.agent.cli,
+          status: r.status,
+          reply: r.reply ?? null,
+        };
+      } catch {
+        return {
+          projectName: t.project.name,
+          agentName: t.agent.name,
+          cli: t.agent.cli,
+          status: 'error',
+          reply: null,
+        };
+      }
+    }),
+  );
+
+  return { ok: true, projectName: scopeName, replies, skipped };
+}

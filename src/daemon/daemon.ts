@@ -19,7 +19,15 @@ import * as storage from '../storage.js';
 import { hookEventToStatus } from '../hook-config.js';
 import { Orchestrator } from './orchestrator.js';
 import { hookEvents } from './hook-events.js';
-import { orgSnapshot, askAgentDispatch, startAgentDispatch } from './hive.js';
+import {
+  orgSnapshot,
+  askAgentDispatch,
+  startAgentDispatch,
+  readWiki,
+  projectOverview,
+  readShared,
+  broadcastDispatch,
+} from './hive.js';
 import {
   DAEMON_HOST,
   DAEMON_PORT,
@@ -236,7 +244,9 @@ function sendJson(res: ServerResponse, status: number, obj: unknown) {
 
 async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
   const url = httpReq.url || '';
-  const route = url.split('?')[0];
+  const parsed = new URL(url, 'http://daemon');
+  const route = parsed.pathname;
+  const query = parsed.searchParams;
 
   // POST /hook/<agentId>/<event> — Claude lifecycle hooks
   if (httpReq.method === 'POST' && route.startsWith('/hook/')) {
@@ -306,6 +316,53 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
     } catch (err) {
       sendJson(res, 500, {
         ok: false, status: 'not-found',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  // GET /org/wiki?project=&page=&overview=1 — project wiki / overview
+  if (httpReq.method === 'GET' && route === '/org/wiki') {
+    const project = (query.get('project') || '').trim();
+    if (!project) {
+      sendJson(res, 400, { ok: false, error: 'project is required' });
+      return;
+    }
+    if (query.get('overview') === '1') {
+      sendJson(res, 200, projectOverview(project));
+    } else {
+      sendJson(res, 200, readWiki(project, query.get('page') || undefined));
+    }
+    return;
+  }
+
+  // GET /org/shared?project=&file= — project shared content
+  if (httpReq.method === 'GET' && route === '/org/shared') {
+    const project = (query.get('project') || '').trim();
+    if (!project) {
+      sendJson(res, 400, { ok: false, error: 'project is required' });
+      return;
+    }
+    sendJson(res, 200, readShared(project, query.get('file') || undefined));
+    return;
+  }
+
+  // POST /org/broadcast — ask every running agent at once
+  if (httpReq.method === 'POST' && route === '/org/broadcast') {
+    try {
+      const body = JSON.parse((await readBody(httpReq)) || '{}');
+      const message = String(body.message || '').trim();
+      const project = body.project ? String(body.project).trim() : undefined;
+      if (!message) {
+        sendJson(res, 400, { ok: false, error: 'message is required', replies: [], skipped: [] });
+        return;
+      }
+      const result = await broadcastDispatch(project, message);
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false, replies: [], skipped: [],
         error: err instanceof Error ? err.message : String(err),
       });
     }
