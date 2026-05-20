@@ -129,7 +129,7 @@ export function createAgent(projectId: string, name: string, cli: Agent['cli'], 
   return agent;
 }
 
-export function updateAgent(projectId: string, agentId: string, updates: Partial<Pick<Agent, 'name' | 'role' | 'cli' | 'cwd' | 'status' | 'pid' | 'flags'>>): Agent | null {
+export function updateAgent(projectId: string, agentId: string, updates: Partial<Pick<Agent, 'name' | 'role' | 'cli' | 'cwd' | 'status' | 'pid' | 'flags' | 'codexThreadId'>>): Agent | null {
   const data = getProjectData(projectId);
   if (!data) return null;
   const agent = data.agents.find(a => a.id === agentId);

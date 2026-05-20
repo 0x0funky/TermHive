@@ -16,7 +16,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import * as storage from '../storage.js';
-import * as ptyManager from '../pty-manager.js';
+import * as runtime from './runtime.js';
 import type { Agent, Project } from '../types.js';
 import { hookEvents } from './hook-events.js';
 
@@ -299,7 +299,7 @@ export async function askAgentDispatch(
     cli: agent.cli,
   };
 
-  if (!ptyManager.isAgentRunning(agent.id)) {
+  if (!runtime.isAgentRunning(agent.id)) {
     return { ok: false, status: 'not-running', ...base, reply: null };
   }
 
@@ -308,7 +308,7 @@ export async function askAgentDispatch(
   if (agent.cli === 'claude') {
     // Claude → PTY injection + status-engine turn detection + transcript read.
     const turnEnded = waitForTurnEnd(agent.id, TURN_TIMEOUT_MS);
-    const injected = ptyManager.injectMessage(agent.id, 'Hive Orchestrator', message);
+    const injected = runtime.injectMessage(agent.id, 'Hive Orchestrator', message);
     if (!injected) {
       return { ok: false, status: 'not-running', ...base, reply: null };
     }
@@ -334,7 +334,7 @@ export async function askAgentDispatch(
 
   // Codex / Gemini / other — deliver the message; reply capture lands with
   // their precise-status support (v2.2 / later).
-  const injected = ptyManager.injectMessage(agent.id, 'Hive Orchestrator', message);
+  const injected = runtime.injectMessage(agent.id, 'Hive Orchestrator', message);
   return {
     ok: injected,
     status: injected ? 'delivered' : 'not-running',
@@ -362,6 +362,8 @@ export interface StartAgentResult {
  * no hooks, so we fall back to a fixed boot delay.
  */
 function waitForAgentReady(agentId: string, cli: string): Promise<void> {
+  // Codex (app-server): the thread already exists once startAgent resolved.
+  if (cli === 'codex') return Promise.resolve();
   if (cli !== 'claude') return sleep(16_000);
   return new Promise((resolve) => {
     let done = false;
@@ -393,7 +395,7 @@ function waitForAgentReady(agentId: string, cli: string): Promise<void> {
 export async function startAgentDispatch(
   projectRef: string,
   agentRef: string,
-  doStart: (agent: Agent) => boolean,
+  doStart: (agent: Agent) => boolean | Promise<boolean>,
 ): Promise<StartAgentResult> {
   const project = resolveProject(projectRef);
   if (!project) {
@@ -410,10 +412,10 @@ export async function startAgentDispatch(
   }
 
   const base = { projectName: project.name, agentName: agent.name, cli: agent.cli };
-  if (ptyManager.isAgentRunning(agent.id)) {
+  if (runtime.isAgentRunning(agent.id)) {
     return { ok: true, status: 'already-running', ...base };
   }
-  if (!doStart(agent)) {
+  if (!(await doStart(agent))) {
     return { ok: false, status: 'start-failed', ...base, error: 'Failed to spawn the agent process.' };
   }
 
@@ -446,10 +448,10 @@ export function stopAgentDispatch(projectRef: string, agentRef: string): StopAge
     };
   }
   const base = { projectName: project.name, agentName: agent.name, agentId: agent.id };
-  if (!ptyManager.isAgentRunning(agent.id)) {
+  if (!runtime.isAgentRunning(agent.id)) {
     return { ok: true, status: 'already-stopped', ...base };
   }
-  ptyManager.stopAgent(agent.id);
+  runtime.stopAgent(agent.id);
   return { ok: true, status: 'stopped', ...base };
 }
 
@@ -573,9 +575,9 @@ export async function broadcastDispatch(
     }
   }
 
-  const running = targets.filter((t) => ptyManager.isAgentRunning(t.agent.id));
+  const running = targets.filter((t) => runtime.isAgentRunning(t.agent.id));
   const skipped = targets
-    .filter((t) => !ptyManager.isAgentRunning(t.agent.id))
+    .filter((t) => !runtime.isAgentRunning(t.agent.id))
     .map((t) => ({ projectName: t.project.name, agentName: t.agent.name, reason: 'not running' }));
 
   const scopeName = projectRef ? targets[0]?.project.name : undefined;

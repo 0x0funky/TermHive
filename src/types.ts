@@ -24,6 +24,9 @@ export interface Agent {
   cwd: string;
   status: AgentStatus;
   pid?: number;
+  /** v2.2: Codex agents run as `codex app-server` threads — this is the
+   *  thread id, persisted so the agent resumes across daemon restarts. */
+  codexThreadId?: string;
   flags?: {
     dangerouslySkipPermissions?: boolean;
     remoteControl?: boolean;

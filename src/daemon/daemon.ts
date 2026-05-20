@@ -14,7 +14,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import * as ptyManager from '../pty-manager.js';
+import * as runtime from './runtime.js';
 import * as storage from '../storage.js';
 import { hookEventToStatus } from '../hook-config.js';
 import { Orchestrator } from './orchestrator.js';
@@ -107,7 +107,7 @@ function onAgentStatus(agentId: string, status: string) {
 function liveStatus(agentId: string): string {
   const s = agentStatus.get(agentId);
   if (s) return s;
-  return ptyManager.isAgentRunning(agentId) ? 'running' : 'stopped';
+  return runtime.isAgentRunning(agentId) ? 'running' : 'stopped';
 }
 
 // ─────────────────────────── Orchestrator brain ───────────────────────────
@@ -130,20 +130,20 @@ function attachTerminal(ws: WebSocket, agentId: string) {
   const listeners = clientListeners.get(ws);
   if (!listeners) return;
   const existing = listeners.get(agentId);
-  if (existing) ptyManager.removeOutputListener(agentId, existing);
+  if (existing) runtime.removeOutputListener(agentId, existing);
 
   const listener = (data: string) => {
     send(ws, { kind: 'event', event: 'terminal:output', agentId, data });
   };
   listeners.set(agentId, listener);
-  ptyManager.addOutputListener(agentId, listener);
+  runtime.addOutputListener(agentId, listener);
 }
 
 function detachTerminal(ws: WebSocket, agentId: string) {
   const listeners = clientListeners.get(ws);
   const listener = listeners?.get(agentId);
   if (listener) {
-    ptyManager.removeOutputListener(agentId, listener);
+    runtime.removeOutputListener(agentId, listener);
     listeners!.delete(agentId);
   }
 }
@@ -155,8 +155,8 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
     switch (req.op) {
       case 'terminal:attach': attachTerminal(ws, req.agentId); return;
       case 'terminal:detach': detachTerminal(ws, req.agentId); return;
-      case 'terminal:input': ptyManager.writeToAgent(req.agentId, req.data); return;
-      case 'terminal:resize': ptyManager.resizeAgent(req.agentId, req.cols, req.rows); return;
+      case 'terminal:input': runtime.writeToAgent(req.agentId, req.data); return;
+      case 'terminal:resize': runtime.resizeAgent(req.agentId, req.cols, req.rows); return;
       case 'brain:send':
         orchestrator.send(req.message).catch((err) =>
           console.error('[daemon] brain send error:', err));
@@ -176,45 +176,48 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
       case 'agent:start': {
         const agent = storage.getAgent(req.projectId, req.agentId);
         if (!agent) return fail('Agent not found');
-        const ok = ptyManager.startAgent(agent, onAgentStatus);
+        const ok = await runtime.startAgent(agent, onAgentStatus);
         return reply({ ok });
       }
       case 'agent:stop': {
-        const ok = ptyManager.stopAgent(req.agentId);
+        const ok = runtime.stopAgent(req.agentId);
         setStatus(req.agentId, 'stopped');
         return reply({ ok });
       }
       case 'agent:restart': {
         const agent = storage.getAgent(req.projectId, req.agentId);
         if (!agent) return fail('Agent not found');
-        ptyManager.stopAgent(req.agentId);
+        runtime.stopAgent(req.agentId);
         setStatus(req.agentId, 'stopped');
         setTimeout(() => {
           const fresh = storage.getAgent(req.projectId, req.agentId);
-          if (fresh) ptyManager.startAgent(fresh, onAgentStatus);
+          if (fresh) {
+            runtime.startAgent(fresh, onAgentStatus).catch((err) =>
+              console.error('[daemon] restart error:', err));
+          }
         }, 500);
         return reply({ ok: true });
       }
       case 'agent:cleanup': {
         const agent = storage.getAgent(req.projectId, req.agentId);
-        if (agent) ptyManager.cleanupMcpConfig(agent);
+        if (agent) runtime.cleanupMcpConfig(agent);
         return reply({ ok: true });
       }
       case 'agent:inject': {
-        const delivered = ptyManager.injectMessage(req.agentId, req.fromName, req.message);
+        const delivered = runtime.injectMessage(req.agentId, req.fromName, req.message);
         return reply({ delivered });
       }
       case 'agent:isRunning':
-        return reply({ running: ptyManager.isAgentRunning(req.agentId) });
+        return reply({ running: runtime.isAgentRunning(req.agentId) });
       case 'agent:preview':
-        return reply({ preview: ptyManager.getAgentPreview(req.agentId) });
+        return reply({ preview: runtime.getAgentPreview(req.agentId) });
       case 'agent:runningIds':
-        return reply({ ids: ptyManager.getRunningAgentIds() });
+        return reply({ ids: runtime.getRunningAgentIds() });
       case 'agent:statuses': {
         // Full fine-grained status map. Any pty-alive agent without a status
         // engine entry defaults to 'running'.
         const statuses: Record<string, string> = {};
-        for (const id of ptyManager.getRunningAgentIds()) statuses[id] = 'running';
+        for (const id of runtime.getRunningAgentIds()) statuses[id] = 'running';
         for (const [id, s] of agentStatus) statuses[id] = s;
         return reply({ statuses });
       }
@@ -268,7 +271,7 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
       // Feed the dispatch layer's turn detector (ask_agent) first.
       hookEvents.emit('hook', agentId, event);
       const status = hookEventToStatus(event);
-      if (status && ptyManager.isAgentRunning(agentId)) setStatus(agentId, status);
+      if (status && runtime.isAgentRunning(agentId)) setStatus(agentId, status);
     }
     res.writeHead(204); // empty body — keeps `curl -s` output silent
     res.end();
@@ -332,7 +335,7 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
       }
       const result = await startAgentDispatch(
         project, agent,
-        (ag) => ptyManager.startAgent(ag, onAgentStatus),
+        (ag) => runtime.startAgent(ag, onAgentStatus),
       );
       sendJson(res, 200, result);
     } catch (err) {
@@ -516,7 +519,7 @@ wss.on('connection', (ws) => {
     const listeners = clientListeners.get(ws);
     if (listeners) {
       for (const [agentId, listener] of listeners) {
-        ptyManager.removeOutputListener(agentId, listener);
+        runtime.removeOutputListener(agentId, listener);
       }
       listeners.clear();
     }
@@ -539,8 +542,8 @@ httpServer.on('error', (err) => {
 // Graceful shutdown — kill every PTY so nothing is orphaned.
 function shutdown(signal: string) {
   console.log(`[daemon] ${signal} — killing all agents...`);
-  for (const agentId of ptyManager.getRunningAgentIds()) {
-    try { ptyManager.stopAgent(agentId); } catch { /* best-effort */ }
+  for (const agentId of runtime.getRunningAgentIds()) {
+    try { runtime.stopAgent(agentId); } catch { /* best-effort */ }
   }
   process.exit(0);
 }
