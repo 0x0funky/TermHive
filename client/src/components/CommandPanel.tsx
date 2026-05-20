@@ -1,13 +1,16 @@
 /**
- * Command panel — the v2.3 conversation with the orchestrator brain ("The
- * Keeper"). Opened with ⌘J. A right-side drawer: you type plain-language
- * orders, the brain inspects the hive through its tools and reports back.
+ * Command panel — the conversation with the orchestrator brain ("The Keeper").
+ * Opened with ⌘J. A right-side drawer.
  *
- * The conversation lives in the daemon; this panel is a thin client:
- *  - GET /api/brain        — replay the persisted conversation on open
+ * Keeps multiple conversations (chat threads); each persists in the daemon and
+ * survives restarts. The conversation list / switcher is the History view.
+ *
+ *  - GET /api/brain        — replay the current conversation + the list
  *  - ws { brain:send }     — send a user message
- *  - ws { brain:reset }    — start a fresh conversation
- *  - ws { brain:event }    — live append / status / reset
+ *  - ws { brain:new }      — start a fresh conversation
+ *  - ws { brain:switch }   — switch the active conversation
+ *  - ws { brain:delete }   — delete a conversation
+ *  - ws { brain:event }    — live append / status / full-state updates
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -21,10 +24,23 @@ interface BrainMessage {
   tool?: string;
 }
 type BrainStatus = 'idle' | 'thinking';
+interface BrainConversationMeta {
+  id: string;
+  title: string;
+  updatedAt: string;
+  messageCount: number;
+}
+interface BrainState {
+  messages: BrainMessage[];
+  status: BrainStatus;
+  engine: string;
+  currentId: string;
+  conversations: BrainConversationMeta[];
+}
 type BrainEvent =
-  | { kind: 'append'; message: BrainMessage }
+  | { kind: 'append'; conversationId: string; message: BrainMessage }
   | { kind: 'status'; status: BrainStatus }
-  | { kind: 'reset' };
+  | { kind: 'state'; state: BrainState };
 
 interface Props {
   open: boolean;
@@ -38,38 +54,46 @@ const EXAMPLES = [
   'Ask the backend agent for its current progress',
 ];
 
+function timeAgo(ts: string): string {
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return `${Math.max(s, 0)}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
 export default function CommandPanel({ open, onClose, wsRef }: Props) {
   const [messages, setMessages] = useState<BrainMessage[]>([]);
   const [status, setStatus] = useState<BrainStatus>('idle');
-  const [engine, setEngine] = useState('codex');
+  const [conversations, setConversations] = useState<BrainConversationMeta[]>([]);
+  const [currentId, setCurrentId] = useState('');
   const [input, setInput] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const appendMessage = useCallback((msg: BrainMessage) => {
-    setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+  // Keep the active conversation id reachable from the (long-lived) ws handler.
+  const currentIdRef = useRef(currentId);
+  currentIdRef.current = currentId;
+
+  const applyState = useCallback((s: BrainState) => {
+    setMessages(Array.isArray(s.messages) ? s.messages : []);
+    if (s.status) setStatus(s.status);
+    if (s.currentId) setCurrentId(s.currentId);
+    if (Array.isArray(s.conversations)) setConversations(s.conversations);
   }, []);
 
-  // Replay the conversation + subscribe to live events whenever the panel opens.
+  // Load the conversation + subscribe to live events whenever the panel opens.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
 
     fetch('/api/brain')
       .then((r) => r.json())
-      .then((s) => {
-        if (cancelled) return;
-        if (Array.isArray(s.messages)) {
-          setMessages((prev) => {
-            const ids = new Set<string>(s.messages.map((m: BrainMessage) => m.id));
-            const extra = prev.filter((m) => !ids.has(m.id)); // events that beat the fetch
-            return [...s.messages, ...extra];
-          });
-        }
-        if (s.status) setStatus(s.status);
-        if (s.engine) setEngine(s.engine);
-      })
-      .catch(() => { /* daemon down — panel still usable once it returns */ });
+      .then((s: BrainState) => { if (!cancelled) applyState(s); })
+      .catch(() => { /* daemon down — usable once it returns */ });
 
     const ws = wsRef.current;
     if (!ws) return () => { cancelled = true; };
@@ -78,20 +102,26 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
         const data = JSON.parse(ev.data);
         if (data.type !== 'brain:event') return;
         const p: BrainEvent = data.payload;
-        if (p.kind === 'append') appendMessage(p.message);
-        else if (p.kind === 'status') setStatus(p.status);
-        else if (p.kind === 'reset') { setMessages([]); setStatus('idle'); }
+        if (p.kind === 'append') {
+          if (p.conversationId === currentIdRef.current) {
+            setMessages((prev) =>
+              prev.some((m) => m.id === p.message.id) ? prev : [...prev, p.message]);
+          }
+        } else if (p.kind === 'status') {
+          setStatus(p.status);
+        } else if (p.kind === 'state') {
+          applyState(p.state);
+        }
       } catch { /* ignore */ }
     };
     ws.addEventListener('message', handler);
     return () => { cancelled = true; ws.removeEventListener('message', handler); };
-  }, [open, wsRef, appendMessage]);
+  }, [open, wsRef, applyState]);
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 60);
   }, [open]);
 
-  // Keep the latest message in view.
   useEffect(() => {
     const el = bodyRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -99,27 +129,43 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
 
   if (!open) return null;
 
+  const wsSend = (obj: object): boolean => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(obj));
+    return true;
+  };
+
   const send = () => {
     const text = input.trim();
     if (!text || status === 'thinking') return;
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'brain:send', message: text }));
-    setInput('');
+    if (wsSend({ type: 'brain:send', message: text })) {
+      setInput('');
+      setShowHistory(false);
+    }
   };
 
-  const reset = () => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'brain:reset' }));
-    }
-    setMessages([]);
-    setStatus('idle');
+  const newConversation = () => {
+    wsSend({ type: 'brain:new' });
+    setShowHistory(false);
+  };
+
+  const switchTo = (id: string) => {
+    if (id !== currentId) wsSend({ type: 'brain:switch', conversationId: id });
+    setShowHistory(false);
+  };
+
+  const deleteConversation = (id: string) => {
+    if (!confirm('Delete this conversation? This cannot be undone.')) return;
+    wsSend({ type: 'brain:delete', conversationId: id });
   };
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
+
+  const currentTitle =
+    conversations.find((c) => c.id === currentId)?.title || 'New conversation';
 
   return (
     <div className="cmd-scrim" onClick={onClose}>
@@ -129,12 +175,19 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
             <div className="cmd-mark"><Ic.sparkles size={15} /></div>
             <div className="cmd-h-txt">
               <div className="cmd-title">Command</div>
-              <div className="cmd-sub">The Keeper · {engine} brain</div>
+              <div className="cmd-sub">{currentTitle}</div>
             </div>
           </div>
           <div className="cmd-h-r">
-            <button className="hbtn" title="New conversation" onClick={reset}>
-              <Ic.restart size={13} />
+            <button
+              className={'hbtn' + (showHistory ? ' active' : '')}
+              title="Conversations"
+              onClick={() => setShowHistory((h) => !h)}
+            >
+              <Ic.book size={13} />
+            </button>
+            <button className="hbtn" title="New conversation" onClick={newConversation}>
+              <Ic.plus size={13} />
             </button>
             <button className="hbtn" title="Close (Esc)" onClick={onClose}>
               <Ic.x size={13} />
@@ -142,52 +195,86 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
           </div>
         </header>
 
-        <div className="cmd-body scroll" ref={bodyRef}>
-          {messages.length === 0 ? (
-            <div className="cmd-intro">
-              <div className="cmd-intro-mark"><Ic.sparkles size={24} /></div>
-              <h3>Talk to The Keeper</h3>
-              <p>
-                Your orchestrator brain. Give it plain-language orders — it inspects
-                your projects, checks agents, and relays instructions for you.
-              </p>
-              <div className="cmd-egs">
-                {EXAMPLES.map((eg) => (
-                  <button key={eg} className="cmd-eg" onClick={() => setInput(eg)}>
-                    {eg}
-                  </button>
-                ))}
+        {showHistory ? (
+          <div className="cmd-hist scroll">
+            <button className="cmd-hist-new" onClick={newConversation}>
+              <Ic.plus size={12} /> New conversation
+            </button>
+            {conversations.length === 0 && (
+              <div className="panel-empty" style={{ padding: 24 }}>No conversations yet.</div>
+            )}
+            {conversations.map((c) => (
+              <div
+                key={c.id}
+                className={'cmd-hist-row' + (c.id === currentId ? ' active' : '')}
+                onClick={() => switchTo(c.id)}
+              >
+                <div className="cmd-hist-main">
+                  <div className="cmd-hist-title">{c.title || 'New conversation'}</div>
+                  <div className="cmd-hist-meta">
+                    {c.messageCount} {c.messageCount === 1 ? 'message' : 'messages'} · {timeAgo(c.updatedAt)}
+                  </div>
+                </div>
+                <button
+                  className="cmd-hist-del"
+                  title="Delete conversation"
+                  onClick={(e) => { e.stopPropagation(); deleteConversation(c.id); }}
+                >
+                  <Ic.x size={11} />
+                </button>
               </div>
-            </div>
-          ) : (
-            messages.map((m) => <BrainRow key={m.id} m={m} />)
-          )}
-          {status === 'thinking' && (
-            <div className="cmd-thinking">
-              <span className="cmd-dot" /><span className="cmd-dot" /><span className="cmd-dot" />
-              The Keeper is working…
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="cmd-body scroll" ref={bodyRef}>
+            {messages.length === 0 ? (
+              <div className="cmd-intro">
+                <div className="cmd-intro-mark"><Ic.sparkles size={24} /></div>
+                <h3>Talk to The Keeper</h3>
+                <p>
+                  Your orchestrator brain. Give it plain-language orders — it inspects
+                  your projects, checks agents, and relays instructions for you.
+                </p>
+                <div className="cmd-egs">
+                  {EXAMPLES.map((eg) => (
+                    <button key={eg} className="cmd-eg" onClick={() => setInput(eg)}>
+                      {eg}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((m) => <BrainRow key={m.id} m={m} />)
+            )}
+            {status === 'thinking' && (
+              <div className="cmd-thinking">
+                <span className="cmd-dot" /><span className="cmd-dot" /><span className="cmd-dot" />
+                The Keeper is working…
+              </div>
+            )}
+          </div>
+        )}
 
-        <div className="cmd-compose">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKey}
-            placeholder="Ask The Keeper…  (Enter to send, Shift+Enter for a new line)"
-            rows={2}
-          />
-          <button
-            className="cmd-send"
-            onClick={send}
-            disabled={!input.trim() || status === 'thinking'}
-            title="Send"
-          >
-            <Ic.send size={14} />
-          </button>
-        </div>
+        {!showHistory && (
+          <div className="cmd-compose">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKey}
+              placeholder="Ask The Keeper…  (Enter to send, Shift+Enter for a new line)"
+              rows={2}
+            />
+            <button
+              className="cmd-send"
+              onClick={send}
+              disabled={!input.trim() || status === 'thinking'}
+              title="Send"
+            >
+              <Ic.send size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

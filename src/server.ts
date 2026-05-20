@@ -206,8 +206,16 @@ wss.on('connection', (ws) => {
         daemon.sendBrain(msg.message);
         break;
       }
-      case 'brain:reset': {
-        daemon.resetBrain();
+      case 'brain:new': {
+        daemon.newBrainConversation();
+        break;
+      }
+      case 'brain:switch': {
+        daemon.switchBrainConversation(msg.conversationId);
+        break;
+      }
+      case 'brain:delete': {
+        daemon.deleteBrainConversation(msg.conversationId);
         break;
       }
     }

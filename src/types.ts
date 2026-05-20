@@ -53,7 +53,9 @@ export type WSClientMessage =
   | { type: 'terminal:detach'; agentId: string }
   | { type: 'terminal:resize'; agentId: string; cols: number; rows: number }
   | { type: 'brain:send'; message: string }
-  | { type: 'brain:reset' };
+  | { type: 'brain:new' }
+  | { type: 'brain:switch'; conversationId: string }
+  | { type: 'brain:delete'; conversationId: string };
 
 export interface ActivityEvent {
   id: string;

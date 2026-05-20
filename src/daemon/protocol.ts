@@ -27,19 +27,32 @@ export interface BrainMessage {
 
 export type BrainStatus = 'idle' | 'thinking';
 
-/** Streamed daemon → web while the brain works, and on reset. */
-export type BrainEvent =
-  | { kind: 'append'; message: BrainMessage }
-  | { kind: 'status'; status: BrainStatus }
-  | { kind: 'reset' };
+/** Lightweight conversation entry for the Command panel's switcher. */
+export interface BrainConversationMeta {
+  id: string;
+  title: string;
+  updatedAt: string;
+  messageCount: number;
+}
 
-/** Snapshot of the brain returned by the `brain:state` RPC. */
+/** Snapshot of the brain — returned by `brain:state` and `state` events. */
 export interface BrainState {
+  /** Messages of the *current* conversation. */
   messages: BrainMessage[];
   status: BrainStatus;
   /** Which CLI powers the brain — Phase 1 is always 'codex'. */
   engine: 'codex' | 'claude';
+  /** Id of the current conversation. */
+  currentId: string;
+  /** All conversations, newest first — for the switcher. */
+  conversations: BrainConversationMeta[];
 }
+
+/** Streamed daemon → web while the brain works and when conversations change. */
+export type BrainEvent =
+  | { kind: 'append'; conversationId: string; message: BrainMessage }
+  | { kind: 'status'; status: BrainStatus }
+  | { kind: 'state'; state: BrainState };
 
 /**
  * Emitted when the orchestrator dispatches to an agent (ask_agent / broadcast),
@@ -78,7 +91,9 @@ export type DaemonRequest =
   | { op: 'terminal:input'; agentId: string; data: string }
   | { op: 'terminal:resize'; agentId: string; cols: number; rows: number }
   | { op: 'brain:send'; message: string }
-  | { op: 'brain:reset' };
+  | { op: 'brain:new' }
+  | { op: 'brain:switch'; conversationId: string }
+  | { op: 'brain:delete'; conversationId: string };
 
 /** Daemon → Web. */
 export type DaemonMessage =

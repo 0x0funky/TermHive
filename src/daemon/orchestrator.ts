@@ -5,12 +5,13 @@
  * to it from the Command panel; it inspects the hive through the Hive
  * Orchestrator MCP and reports back.
  *
- * Runtime (v2.3 Phase 1): **Codex**. Each turn is a `codex exec` invocation
- * that resumes the brain's own thread, so the conversation is continuous and
- * — because programmatic Codex is subscription-covered (plan §3) — free.
+ * Runtime: **Codex**. Each turn is a `codex exec` invocation that resumes the
+ * conversation's own thread, so context is continuous and — because
+ * programmatic Codex is subscription-covered (plan §3) — free.
  *
- * The brain runs with a dedicated `CODEX_HOME` so its Hive MCP wiring never
- * touches the user's own Codex config or the project agents.
+ * The brain keeps **multiple conversations** (like chat threads); each has its
+ * own Codex thread. All of them persist to ~/.termhive/brain/state.json and
+ * survive daemon restarts.
  */
 
 import { spawn } from 'child_process';
@@ -24,8 +25,10 @@ import { DAEMON_HTTP_URL } from './protocol.js';
 
 const __dirname_ = path.dirname(fileURLToPath(import.meta.url));
 
-/** Cap the persisted transcript so state.json stays small. */
+/** Cap each conversation's transcript so state.json stays small. */
 const MAX_HISTORY = 240;
+/** Cap how many conversations are kept (oldest dropped beyond this). */
+const MAX_CONVERSATIONS = 50;
 
 const BRAIN_DIR = path.join(os.homedir(), '.termhive', 'brain');
 const CODEX_HOME = path.join(BRAIN_DIR, 'codex-home');
@@ -86,9 +89,19 @@ accurate, and proactive about what needs the user's attention.
 - Never pretend you reached an agent you didn't.
 `;
 
-interface PersistedState {
+/** One brain conversation — its own Codex thread and transcript. */
+interface Conversation {
+  id: string;
+  title: string;
   threadId: string | null;
   messages: BrainMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PersistedState {
+  conversations: Conversation[];
+  currentId: string;
 }
 
 /** TOML basic-string literal with proper escaping (Windows paths included). */
@@ -104,8 +117,8 @@ function winQuote(arg: string): string {
 }
 
 export class Orchestrator {
-  private threadId: string | null = null;
-  private messages: BrainMessage[] = [];
+  private conversations: Conversation[] = [];
+  private currentId = '';
   private status: BrainStatus = 'idle';
   private busy = false;
 
@@ -118,17 +131,56 @@ export class Orchestrator {
   // ─────────────────────────── Public API ───────────────────────────
 
   getState(): BrainState {
-    return { messages: this.messages, status: this.status, engine: 'codex' };
+    const cur = this.current();
+    return {
+      messages: cur.messages,
+      status: this.status,
+      engine: 'codex',
+      currentId: this.currentId,
+      conversations: [...this.conversations]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map((c) => ({
+          id: c.id,
+          title: c.title,
+          updatedAt: c.updatedAt,
+          messageCount: c.messages.length,
+        })),
+    };
   }
 
-  /** Wipe the conversation and start a fresh Codex thread. */
-  reset(): void {
-    this.threadId = null;
-    this.messages = [];
-    this.status = 'idle';
-    this.busy = false;
+  /** Start a fresh conversation (keeps the existing ones). */
+  newConversation(): void {
+    const conv = this.makeConversation();
+    this.conversations.push(conv);
+    this.trimConversations();
+    this.currentId = conv.id;
     this.save();
-    this.emit({ kind: 'reset' });
+    this.emitState();
+  }
+
+  /** Switch the active conversation. */
+  switchConversation(id: string): void {
+    if (id === this.currentId) return;
+    if (!this.conversations.some((c) => c.id === id)) return;
+    this.currentId = id;
+    this.save();
+    this.emitState();
+  }
+
+  /** Delete a conversation. Always keeps at least one. */
+  deleteConversation(id: string): void {
+    const idx = this.conversations.findIndex((c) => c.id === id);
+    if (idx < 0) return;
+    this.conversations.splice(idx, 1);
+    if (this.conversations.length === 0) {
+      this.conversations.push(this.makeConversation());
+    }
+    if (this.currentId === id) {
+      this.currentId = [...this.conversations]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0].id;
+    }
+    this.save();
+    this.emitState();
   }
 
   /** Run one brain turn for a user message. */
@@ -136,8 +188,12 @@ export class Orchestrator {
     const text = message.trim();
     if (!text) return;
 
+    // The turn targets whichever conversation is current right now; capture it
+    // so a mid-turn switch doesn't misroute the streamed messages.
+    const conv = this.current();
+
     if (this.busy) {
-      this.append({
+      this.append(conv, {
         role: 'system',
         text: 'The Keeper is still working on the previous request — one moment.',
       });
@@ -145,13 +201,14 @@ export class Orchestrator {
     }
 
     this.busy = true;
-    this.append({ role: 'user', text });
+    if (conv.messages.length === 0) conv.title = makeTitle(text);
+    this.append(conv, { role: 'user', text });
     this.setStatus('thinking');
 
     try {
-      await this.runCodexTurn(text);
+      await this.runCodexTurn(conv, text);
     } catch (err) {
-      this.append({
+      this.append(conv, {
         role: 'error',
         text: 'Brain turn failed: ' + (err instanceof Error ? err.message : String(err)),
       });
@@ -159,12 +216,13 @@ export class Orchestrator {
       this.busy = false;
       this.setStatus('idle');
       this.save();
+      this.emitState(); // refresh the conversation list (title / updatedAt / count)
     }
   }
 
   // ─────────────────────────── Codex turn ───────────────────────────
 
-  private runCodexTurn(prompt: string): Promise<void> {
+  private runCodexTurn(conv: Conversation, prompt: string): Promise<void> {
     this.ensureBrainEnv();
 
     const outFile = path.join(BRAIN_DIR, `lastmsg-${Date.now()}.txt`);
@@ -178,8 +236,8 @@ export class Orchestrator {
       '--dangerously-bypass-approvals-and-sandbox',
       '--json', '--skip-git-repo-check', '-o', outFile, '-',
     ];
-    const args = this.threadId
-      ? ['exec', 'resume', this.threadId, ...turnArgs]
+    const args = conv.threadId
+      ? ['exec', 'resume', conv.threadId, ...turnArgs]
       : ['exec', '--cd', BRAIN_DIR, ...turnArgs];
 
     const isWin = process.platform === 'win32';
@@ -195,7 +253,7 @@ export class Orchestrator {
           windowsHide: true,
         });
       } catch (err) {
-        this.append({
+        this.append(conv, {
           role: 'error',
           text: 'Could not start Codex. Is the `codex` CLI installed and on PATH? ' +
             (err instanceof Error ? err.message : String(err)),
@@ -218,7 +276,7 @@ export class Orchestrator {
         while ((nl = stdoutBuf.indexOf('\n')) >= 0) {
           const line = stdoutBuf.slice(0, nl).trim();
           stdoutBuf = stdoutBuf.slice(nl + 1);
-          if (line && this.handleCodexLine(line)) producedAssistant = true;
+          if (line && this.handleCodexLine(conv, line)) producedAssistant = true;
         }
       });
 
@@ -228,7 +286,7 @@ export class Orchestrator {
       });
 
       child.on('error', (err) => {
-        this.append({
+        this.append(conv, {
           role: 'error',
           text: 'Could not start Codex (`codex` CLI not found?): ' + err.message,
         });
@@ -244,10 +302,10 @@ export class Orchestrator {
             if (fs.existsSync(outFile)) last = fs.readFileSync(outFile, 'utf-8').trim();
           } catch { /* ignore */ }
           if (last) {
-            this.append({ role: 'assistant', text: last });
+            this.append(conv, { role: 'assistant', text: last });
           } else if (code !== 0) {
             const detail = stderrBuf.trim().split('\n').slice(-4).join('\n');
-            this.append({
+            this.append(conv, {
               role: 'error',
               text: `Codex exited with code ${code}.` + (detail ? `\n${detail}` : ''),
             });
@@ -260,27 +318,27 @@ export class Orchestrator {
   }
 
   /** Parse one Codex `--json` event line. Returns true if it was an answer. */
-  private handleCodexLine(line: string): boolean {
+  private handleCodexLine(conv: Conversation, line: string): boolean {
     let obj: Record<string, unknown>;
     try { obj = JSON.parse(line); } catch { return false; }
 
     const type = obj.type;
     if (type === 'thread.started') {
       const id = obj.thread_id;
-      if (typeof id === 'string' && id) { this.threadId = id; this.save(); }
+      if (typeof id === 'string' && id) { conv.threadId = id; this.save(); }
       return false;
     }
     if (type === 'item.completed') {
       const msg = this.itemToMessage(obj.item as Record<string, unknown> | undefined);
       if (msg) {
-        this.append(msg);
+        this.append(conv, msg);
         return msg.role === 'assistant';
       }
       return false;
     }
     if (type === 'turn.failed' || type === 'error') {
       const e = (obj.error || obj) as { message?: string };
-      this.append({ role: 'error', text: e.message || 'Brain turn failed.' });
+      this.append(conv, { role: 'error', text: e.message || 'Brain turn failed.' });
       return false;
     }
     return false;
@@ -369,13 +427,37 @@ export class Orchestrator {
 
   // ─────────────────────────── State ───────────────────────────
 
-  private append(m: Omit<BrainMessage, 'id' | 'ts'>): void {
+  private current(): Conversation {
+    return this.conversations.find((c) => c.id === this.currentId) || this.conversations[0];
+  }
+
+  private makeConversation(): Conversation {
+    const now = new Date().toISOString();
+    return {
+      id: randomUUID(),
+      title: 'New conversation',
+      threadId: null,
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /** Drop the oldest conversations beyond the cap. */
+  private trimConversations(): void {
+    if (this.conversations.length <= MAX_CONVERSATIONS) return;
+    this.conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    this.conversations = this.conversations.slice(0, MAX_CONVERSATIONS);
+  }
+
+  private append(conv: Conversation, m: Omit<BrainMessage, 'id' | 'ts'>): void {
     const message: BrainMessage = { id: randomUUID(), ts: new Date().toISOString(), ...m };
-    this.messages.push(message);
-    if (this.messages.length > MAX_HISTORY) {
-      this.messages.splice(0, this.messages.length - MAX_HISTORY);
+    conv.messages.push(message);
+    if (conv.messages.length > MAX_HISTORY) {
+      conv.messages.splice(0, conv.messages.length - MAX_HISTORY);
     }
-    this.emit({ kind: 'append', message });
+    conv.updatedAt = message.ts;
+    this.emit({ kind: 'append', conversationId: conv.id, message });
   }
 
   private setStatus(status: BrainStatus): void {
@@ -384,24 +466,56 @@ export class Orchestrator {
     this.emit({ kind: 'status', status });
   }
 
+  private emitState(): void {
+    this.emit({ kind: 'state', state: this.getState() });
+  }
+
   private load(): void {
     try {
       if (fs.existsSync(STATE_PATH)) {
-        const data = JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8')) as PersistedState;
-        this.threadId = data.threadId ?? null;
-        this.messages = Array.isArray(data.messages) ? data.messages : [];
+        const data = JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8'));
+        if (Array.isArray(data.conversations) && data.conversations.length > 0) {
+          this.conversations = data.conversations;
+          this.currentId = typeof data.currentId === 'string' ? data.currentId : '';
+        } else if (Array.isArray(data.messages)) {
+          // Migrate the old single-conversation shape ({ threadId, messages }).
+          const conv = this.makeConversation();
+          conv.threadId = typeof data.threadId === 'string' ? data.threadId : null;
+          conv.messages = data.messages;
+          const firstUser = data.messages.find((m: BrainMessage) => m?.role === 'user');
+          if (firstUser) conv.title = makeTitle(firstUser.text);
+          this.conversations = [conv];
+          this.currentId = conv.id;
+        }
       }
     } catch {
-      this.threadId = null;
-      this.messages = [];
+      this.conversations = [];
+    }
+    if (this.conversations.length === 0) {
+      const conv = this.makeConversation();
+      this.conversations = [conv];
+      this.currentId = conv.id;
+    }
+    if (!this.conversations.some((c) => c.id === this.currentId)) {
+      this.currentId = this.conversations[0].id;
     }
   }
 
   private save(): void {
     try {
       fs.mkdirSync(BRAIN_DIR, { recursive: true });
-      const data: PersistedState = { threadId: this.threadId, messages: this.messages };
+      const data: PersistedState = {
+        conversations: this.conversations,
+        currentId: this.currentId,
+      };
       fs.writeFileSync(STATE_PATH, JSON.stringify(data, null, 2), 'utf-8');
     } catch { /* best-effort persistence */ }
   }
+}
+
+/** Make a short conversation title from the first user message. */
+function makeTitle(text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (!t) return 'New conversation';
+  return t.length > 48 ? t.slice(0, 48) + '…' : t;
 }

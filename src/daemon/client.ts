@@ -187,9 +187,17 @@ export class DaemonClient {
   sendBrain(message: string): void {
     this.command({ op: 'brain:send', message });
   }
-  /** Reset the orchestrator brain conversation (fire-and-forget). */
-  resetBrain(): void {
-    this.command({ op: 'brain:reset' });
+  /** Start a fresh brain conversation. */
+  newBrainConversation(): void {
+    this.command({ op: 'brain:new' });
+  }
+  /** Switch the active brain conversation. */
+  switchBrainConversation(conversationId: string): void {
+    this.command({ op: 'brain:switch', conversationId });
+  }
+  /** Delete a brain conversation. */
+  deleteBrainConversation(conversationId: string): void {
+    this.command({ op: 'brain:delete', conversationId });
   }
 
   isConnected(): boolean {

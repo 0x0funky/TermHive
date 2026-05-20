@@ -1652,3 +1652,41 @@ input, select, textarea { font-family: inherit; }
 }
 .cmd-send:hover { background: var(--accent-hover); }
 .cmd-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Conversation history / switcher */
+.cmd-h .hbtn.active { background: var(--accent-soft); color: var(--accent); }
+
+.cmd-hist {
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 8px; display: flex; flex-direction: column; gap: 2px;
+}
+.cmd-hist-new {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 11px; margin-bottom: 4px;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid var(--border); border-radius: 7px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.cmd-hist-new:hover { background: var(--accent); color: #0a0a0a; }
+.cmd-hist-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.cmd-hist-row:hover { background: var(--bg-hover); }
+.cmd-hist-row.active { background: var(--bg-2); border-color: var(--border-strong); }
+.cmd-hist-main { flex: 1; min-width: 0; }
+.cmd-hist-title {
+  font-size: 12.5px; color: var(--text-0);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cmd-hist-row.active .cmd-hist-title { font-weight: 500; }
+.cmd-hist-meta { font-size: 10.5px; color: var(--text-3); margin-top: 2px; }
+.cmd-hist-del {
+  flex-shrink: 0; width: 22px; height: 22px;
+  display: grid; place-items: center;
+  background: transparent; border: none; border-radius: 5px;
+  color: var(--text-3); cursor: pointer; opacity: 0;
+}
+.cmd-hist-row:hover .cmd-hist-del { opacity: 1; }
+.cmd-hist-del:hover { background: var(--err-soft); color: var(--err); }
