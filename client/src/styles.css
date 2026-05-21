@@ -1698,7 +1698,7 @@ input, select, textarea { font-family: inherit; }
 .cxv { height: 100%; display: flex; flex-direction: column; background: var(--bg-1); min-height: 0; }
 .cxv-body {
   flex: 1; min-height: 0; overflow: auto;
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
 }
 .cxv-empty { margin: auto; color: var(--text-3); font-size: 12px; }
 
@@ -1778,6 +1778,13 @@ input, select, textarea { font-family: inherit; }
   text-overflow: ellipsis; color: var(--text-0);
 }
 .cxv-card-t.mono { font-family: var(--ff-mono); font-size: 11px; }
+/* command titles wrap fully — the command is the point, don't ellipsis it */
+.cxv-card-t.cxv-cmd-t {
+  white-space: pre-wrap; overflow: visible; text-overflow: clip;
+  word-break: break-word; line-height: 1.5;
+}
+.cxv-card-h-cmd { align-items: flex-start; }
+.cxv-card-h-cmd .cxv-chev, .cxv-card-h-cmd svg { margin-top: 2px; }
 .cxv-card-b {
   padding: 8px 11px; border-top: 1px solid var(--border);
   font-size: 11px; line-height: 1.5; color: var(--text-1);

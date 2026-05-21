@@ -235,10 +235,10 @@ function CodexItemRow({ item, open, onToggle }: {
     const show = open || it.status === 'running';
     return (
       <div className="cxv-card">
-        <button className="cxv-card-h" onClick={onToggle}>
+        <button className="cxv-card-h cxv-card-h-cmd" onClick={onToggle}>
           <Ic.chevR size={10} className={'cxv-chev' + (show ? ' rot' : '')} />
           <Ic.terminal size={10} />
-          <span className="cxv-card-t mono">{it.command || '(command)'}</span>
+          <span className="cxv-card-t mono cxv-cmd-t">{it.command || '(command)'}</span>
           {it.status === 'running'
             ? <span className="cxv-badge run">running</span>
             : it.exitCode != null && (

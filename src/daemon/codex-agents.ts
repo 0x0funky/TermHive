@@ -110,6 +110,30 @@ function extractReasoning(item: Record<string, any>): string {
   return parts.join('\n').trim();
 }
 
+/**
+ * Strip the shell wrapper codex adds so the card shows the real command.
+ * On Windows codex runs everything as `"…\powershell.exe" -Command "ACTUAL"`;
+ * unwrapped, the card would show only the useless wrapper path.
+ */
+function cleanCommand(raw: unknown): string {
+  let cmd = String(raw ?? '').trim();
+  const ps = cmd.match(/powershell(?:\.exe)?"?\s+-(?:command|c)\s+([\s\S]+)$/i);
+  if (ps) {
+    cmd = ps[1].trim();
+  } else {
+    const sh = cmd.match(/\b(?:bash|sh|zsh)(?:\.exe)?"?\s+-c\s+([\s\S]+)$/i);
+    if (sh) cmd = sh[1].trim();
+  }
+  if (cmd.length >= 2) {
+    const a = cmd[0];
+    const b = cmd[cmd.length - 1];
+    if ((a === '"' && b === '"') || (a === "'" && b === "'")) {
+      cmd = cmd.slice(1, -1).trim();
+    }
+  }
+  return cmd;
+}
+
 function stringify(v: unknown, cap = 4000): string {
   if (v === undefined || v === null) return '';
   let s: string;
@@ -144,7 +168,7 @@ function normalizeItem(raw: unknown, status: CodexItem['status']): CodexItem | n
       : (typeof item.exit_code === 'number' ? item.exit_code : null);
     return {
       id, kind: 'command',
-      command: String(item.command || item.cmd || ''),
+      command: cleanCommand(item.command || item.cmd),
       output: String(item.aggregatedOutput || item.output || ''),
       exitCode: exit,
       status, ts: now(),
