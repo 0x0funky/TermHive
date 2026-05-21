@@ -46,8 +46,19 @@ export default function CodexAgentView({ agentId, send, wsRef, onFocus, focused 
   const [items, setItems] = useState<CodexItem[]>([]);
   const [input, setInput] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [model, setModel] = useState('');
+  const [effort, setEffort] = useState('');
+  const [models, setModels] = useState<string[]>([]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Available models for the picker (codex `model/list`).
+  useEffect(() => {
+    fetch('/api/codex/models')
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d?.models)) setModels(d.models); })
+      .catch(() => { /* picker just shows "default" */ });
+  }, []);
 
   useEffect(() => {
     setItems([]);
@@ -93,14 +104,51 @@ export default function CodexAgentView({ agentId, send, wsRef, onFocus, focused 
   const submit = () => {
     const t = input.trim();
     if (!t) return;
-    send({ type: 'terminal:input', agentId, data: t + '\r' });
+    send({
+      type: 'codex:send', agentId, text: t,
+      model: model || undefined, effort: effort || undefined,
+    });
     setInput('');
+  };
+
+  const startNewThread = () => {
+    setItems([]);
+    setExpanded(new Set());
+    send({ type: 'codex:new-thread', agentId });
   };
 
   const working = items.some((i) => i.status === 'running');
 
   return (
     <div className="cxv" onMouseDown={() => onFocus?.()}>
+      <div className="cxv-toolbar">
+        <select
+          className="cxv-select"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          title="Model"
+        >
+          <option value="">Model: default</option>
+          {models.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select
+          className="cxv-select"
+          value={effort}
+          onChange={(e) => setEffort(e.target.value)}
+          title="Reasoning effort"
+        >
+          <option value="">Reasoning: default</option>
+          <option value="minimal">minimal</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="xhigh">xhigh</option>
+        </select>
+        <div className="cxv-toolbar-sp" />
+        <button className="cxv-newthread" onClick={startNewThread} title="Start a new thread">
+          + New thread
+        </button>
+      </div>
       <div className="cxv-body" ref={bodyRef}>
         {items.length === 0 && (
           <div className="cxv-empty">Waiting for the Codex agent…</div>

@@ -169,6 +169,13 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
       case 'terminal:detach': detachTerminal(ws, req.agentId); return;
       case 'terminal:input': runtime.writeToAgent(req.agentId, req.data); return;
       case 'terminal:resize': runtime.resizeAgent(req.agentId, req.cols, req.rows); return;
+      case 'codex:send':
+        runtime.sendCodexTurn(req.agentId, req.text, req.model, req.effort);
+        return;
+      case 'codex:new-thread':
+        runtime.newCodexThread(req.agentId).catch((err) =>
+          console.error('[daemon] codex new-thread error:', err));
+        return;
       case 'brain:send':
         orchestrator.send(req.message).catch((err) =>
           console.error('[daemon] brain send error:', err));
@@ -235,6 +242,8 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
       }
       case 'brain:state':
         return reply(orchestrator.getState());
+      case 'codex:models':
+        return reply({ models: await runtime.listCodexModels() });
       default:
         return fail('Unknown op');
     }

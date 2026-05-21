@@ -55,6 +55,8 @@ export type WSClientMessage =
   | { type: 'terminal:input'; agentId: string; data: string }
   | { type: 'terminal:detach'; agentId: string }
   | { type: 'terminal:resize'; agentId: string; cols: number; rows: number }
+  | { type: 'codex:send'; agentId: string; text: string; model?: string; effort?: string }
+  | { type: 'codex:new-thread'; agentId: string }
   | { type: 'brain:send'; message: string }
   | { type: 'brain:new' }
   | { type: 'brain:switch'; conversationId: string }

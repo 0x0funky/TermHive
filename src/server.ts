@@ -125,6 +125,15 @@ app.get('/api/daemon/status', (_req, res) => {
   res.json({ connected: daemon.isConnected() });
 });
 
+// Codex model list — for the Codex agent view's model picker
+app.get('/api/codex/models', async (_req, res) => {
+  try {
+    res.json(await daemon.request('codex:models'));
+  } catch {
+    res.json({ models: [] });
+  }
+});
+
 // Orchestrator brain — conversation snapshot for the Command panel
 app.get('/api/brain', async (_req, res) => {
   try {
@@ -205,6 +214,17 @@ wss.on('connection', (ws) => {
       }
       case 'terminal:resize': {
         daemon.resizeTerminal(msg.agentId, msg.cols, msg.rows);
+        break;
+      }
+      case 'codex:send': {
+        daemon.command({
+          op: 'codex:send', agentId: msg.agentId, text: msg.text,
+          model: msg.model, effort: msg.effort,
+        });
+        break;
+      }
+      case 'codex:new-thread': {
+        daemon.command({ op: 'codex:new-thread', agentId: msg.agentId });
         break;
       }
       case 'brain:send': {

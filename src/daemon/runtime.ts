@@ -84,3 +84,18 @@ export function cleanupMcpConfig(agent: Agent): void {
 export function askCodexAgent(agentId: string, message: string) {
   return codex.askAgent(agentId, message);
 }
+
+/** Submit a turn to a Codex agent with optional model / effort overrides. */
+export function sendCodexTurn(agentId: string, text: string, model?: string, effort?: string): void {
+  codex.sendTurn(agentId, text, model, effort);
+}
+
+/** Start a fresh thread for a Codex agent. */
+export function newCodexThread(agentId: string): Promise<boolean> {
+  return codex.newThread(agentId);
+}
+
+/** List the models codex offers (UI model picker). */
+export function listCodexModels(): Promise<string[]> {
+  return codex.listModels();
+}

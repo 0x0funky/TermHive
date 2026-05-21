@@ -263,18 +263,44 @@ function handleNotification(method: string, raw: Record<string, unknown>): void 
 
 // ─────────────────────────── Turn submission ───────────────────────────
 
-function submitTurn(s: CodexSession, text: string): void {
+function submitTurn(s: CodexSession, text: string, model?: string, effort?: string): void {
   if (!server) return;
-  server.request('turn/start', {
+  const params: Record<string, unknown> = {
     threadId: s.threadId,
     input: [{ type: 'text', text }],
-  }).catch((err) => {
+  };
+  if (model) params.model = model;
+  if (effort) params.effort = effort;
+  server.request('turn/start', params).catch((err) => {
     upsert(s, {
       id: randomUUID(), kind: 'error',
       text: 'turn failed: ' + (err instanceof Error ? err.message : String(err)),
       ts: now(),
     });
   });
+}
+
+/** Pull a resumed thread's past turns/items back into the view. */
+async function loadHistory(cs: CodexAppServer, s: CodexSession): Promise<void> {
+  try {
+    const r = await cs.request('thread/read', { threadId: s.threadId, includeTurns: true });
+    const turns = r?.thread?.turns;
+    if (!Array.isArray(turns)) return;
+    for (const turn of turns) {
+      const items = turn?.items;
+      if (!Array.isArray(items)) continue;
+      for (const raw of items) {
+        const ci = normalizeItem(raw, 'done');
+        if (ci) {
+          ci.id = `${turn?.id || 'turn'}:${ci.id}`;   // unique across turns
+          s.items.push(ci);
+        }
+      }
+    }
+    if (s.items.length > MAX_ITEMS) s.items.splice(0, s.items.length - MAX_ITEMS);
+  } catch (err) {
+    console.error('[codex-agents] history load failed:', err);
+  }
 }
 
 // ─────────────────────────── Public API ───────────────────────────
@@ -293,12 +319,14 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
 
   const cwd = expandHome(agent.cwd);
   let threadId = '';
+  let resumed = false;
   try {
     if (agent.codexThreadId) {
       const r = await cs.request('thread/resume', {
         threadId: agent.codexThreadId, cwd, config: THREAD_CONFIG,
       });
       threadId = r?.thread?.id || agent.codexThreadId;
+      resumed = true;
     } else {
       const r = await cs.request('thread/start', {
         cwd, sandbox: 'workspace-write', approvalPolicy: 'on-failure',
@@ -336,6 +364,9 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
     catch { /* non-fatal */ }
   }
 
+  // A resumed thread → pull its past turns back into the view.
+  if (resumed) await loadHistory(cs, session);
+
   upsert(session, {
     id: randomUUID(), kind: 'system',
     text: `Codex agent online — app-server thread ${threadId.slice(0, 8)}`,
@@ -343,6 +374,59 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
   });
   onStatus(agent.id, 'running');
   return true;
+}
+
+/** Submit a turn with an optional per-turn model / reasoning-effort override. */
+export function sendTurn(agentId: string, text: string, model?: string, effort?: string): void {
+  const s = sessions.get(agentId);
+  if (!s) return;
+  const clean = text.replace(/\r/g, '').trim();
+  if (clean) submitTurn(s, clean, model, effort);
+}
+
+/** Start a fresh thread for this agent, dropping the current conversation. */
+export async function newThread(agentId: string): Promise<boolean> {
+  const s = sessions.get(agentId);
+  if (!s || !server) return false;
+  try {
+    const r = await server.request('thread/start', {
+      cwd: expandHome(s.agent.cwd),
+      sandbox: 'workspace-write', approvalPolicy: 'on-failure', config: THREAD_CONFIG,
+    });
+    const newId: string = r?.thread?.id || '';
+    if (!newId) return false;
+    threadToAgent.delete(s.threadId);
+    s.threadId = newId;
+    threadToAgent.set(newId, agentId);
+    s.items = [];
+    try { updateAgent(s.agent.projectId, agentId, { codexThreadId: newId }); }
+    catch { /* non-fatal */ }
+    upsert(s, {
+      id: randomUUID(), kind: 'system',
+      text: `New thread — ${newId.slice(0, 8)}`, ts: now(),
+    });
+    return true;
+  } catch (err) {
+    console.error('[codex-agents] newThread failed:', err);
+    return false;
+  }
+}
+
+/** List the models codex offers — for the UI model picker. */
+export async function listModels(): Promise<string[]> {
+  if (!server) return [];
+  try {
+    await server.ensureStarted();
+    const r = await server.request('model/list', {});
+    const data = r?.data;
+    if (!Array.isArray(data)) return [];
+    return data
+      .map((m: Record<string, unknown>) => String(m?.id || m?.slug || m?.name || ''))
+      .filter(Boolean);
+  } catch (err) {
+    console.error('[codex-agents] model/list failed:', err);
+    return [];
+  }
 }
 
 export function stopAgent(agentId: string): boolean {

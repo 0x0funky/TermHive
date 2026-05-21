@@ -1702,6 +1702,26 @@ input, select, textarea { font-family: inherit; }
 }
 .cxv-empty { margin: auto; color: var(--text-3); font-size: 12px; }
 
+/* toolbar — model / reasoning picker + new thread */
+.cxv-toolbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+  background: var(--bg-1); flex-shrink: 0;
+}
+.cxv-toolbar-sp { flex: 1; }
+.cxv-select {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text-1); font-size: 10.5px; padding: 3px 6px; outline: none;
+  font-family: var(--ff-sans); cursor: pointer; max-width: 170px;
+}
+.cxv-select:focus { border-color: var(--accent); }
+.cxv-newthread {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text-1); font-size: 10.5px; padding: 3px 9px; cursor: pointer;
+  white-space: nowrap;
+}
+.cxv-newthread:hover { background: var(--bg-hover); border-color: var(--accent); color: var(--text-0); }
+
 .cxv-system { text-align: center; font-size: 10.5px; color: var(--text-3); padding: 2px; }
 .cxv-error {
   background: var(--err-soft); color: var(--err);

@@ -114,11 +114,14 @@ export type DaemonRequest =
   | { id: string; op: 'agent:runningIds' }
   | { id: string; op: 'agent:statuses' }
   | { id: string; op: 'brain:state' }
+  | { id: string; op: 'codex:models' }
   // --- Fire-and-forget commands ---
   | { op: 'terminal:attach'; agentId: string }
   | { op: 'terminal:detach'; agentId: string }
   | { op: 'terminal:input'; agentId: string; data: string }
   | { op: 'terminal:resize'; agentId: string; cols: number; rows: number }
+  | { op: 'codex:send'; agentId: string; text: string; model?: string; effort?: string }
+  | { op: 'codex:new-thread'; agentId: string }
   | { op: 'brain:send'; message: string }
   | { op: 'brain:new' }
   | { op: 'brain:switch'; conversationId: string }
@@ -148,4 +151,5 @@ export interface DaemonRpcResults {
   'agent:runningIds': { ids: string[] };
   'agent:statuses': { statuses: Record<string, string> };
   'brain:state': BrainState;
+  'codex:models': { models: string[] };
 }
