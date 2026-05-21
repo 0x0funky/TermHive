@@ -1537,6 +1537,8 @@ input, select, textarea { font-family: inherit; }
   display: flex; flex-direction: column; gap: 10px;
   padding: 16px 16px 8px;
 }
+/* Same flex-column scroll fix as .cxv-body — items keep their height. */
+.cmd-body > * { flex-shrink: 0; }
 
 /* Empty state */
 .cmd-intro { margin: auto; text-align: center; padding: 24px 8px; max-width: 320px; }
@@ -1754,6 +1756,9 @@ input, select, textarea { font-family: inherit; }
   flex: 1; min-height: 0; overflow: auto;
   padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
 }
+/* Keep natural height so the body scrolls — without this, a short window
+   makes flexbox squish the items (cards collapse to slivers). */
+.cxv-body > * { flex-shrink: 0; }
 .cxv-empty { margin: auto; color: var(--text-3); font-size: 12px; }
 
 /* toolbar — model / reasoning picker + new thread */
