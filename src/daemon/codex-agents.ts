@@ -8,6 +8,7 @@
  * flat terminal log.
  */
 
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -60,12 +61,76 @@ function getServer(): CodexAppServer {
   // Codex agents do real work — auto-approve so they aren't blocked.
   s.onServerRequest(() => ({ decision: 'approved' }));
   s.onExit(() => {
+    for (const agentId of [...sessions.keys()]) flushSave(agentId);
     for (const agentId of [...sessions.keys()]) onStatus(agentId, 'stopped');
     sessions.clear();
     threadToAgent.clear();
   });
   server = s;
   return s;
+}
+
+// ─────────────────────────── History persistence ───────────────────────────
+// codex's `thread/read` only returns conversational items (messages +
+// reasoning) — not tool executions, and it can be slow/fail on big threads.
+// So we persist each agent's full CodexItem log ourselves: it reloads fast and
+// with full fidelity (tool / command / file cards) across daemon restarts.
+
+const HISTORY_DIR = path.join(os.homedir(), '.termhive', 'codex-history');
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function historyFile(agentId: string): string {
+  return path.join(HISTORY_DIR, `${agentId}.json`);
+}
+
+function saveHistory(s: CodexSession): void {
+  try {
+    fs.mkdirSync(HISTORY_DIR, { recursive: true });
+    // Cap large fields so the file stays a sane size.
+    const items = s.items.map((it): CodexItem => {
+      const c: CodexItem = { ...it };
+      if (c.output && c.output.length > 8000) c.output = c.output.slice(0, 8000) + '\n…';
+      if (c.result && c.result.length > 8000) c.result = c.result.slice(0, 8000) + '…';
+      if (c.diff && c.diff.length > 12000) c.diff = c.diff.slice(0, 12000) + '\n…';
+      return c;
+    });
+    fs.writeFileSync(historyFile(s.agent.id), JSON.stringify({
+      threadId: s.threadId, items, savedAt: now(),
+    }));
+  } catch (err) {
+    console.error('[codex-agents] history save failed:', err);
+  }
+}
+
+/** Debounced persist — called on every item change. */
+function scheduleSave(s: CodexSession): void {
+  const existing = saveTimers.get(s.agent.id);
+  if (existing) clearTimeout(existing);
+  saveTimers.set(s.agent.id, setTimeout(() => {
+    saveTimers.delete(s.agent.id);
+    saveHistory(s);
+  }, 1200));
+}
+
+/** Persist immediately, cancelling any pending debounced save. */
+function flushSave(agentId: string): void {
+  const t = saveTimers.get(agentId);
+  if (t) { clearTimeout(t); saveTimers.delete(agentId); }
+  const s = sessions.get(agentId);
+  if (s) saveHistory(s);
+}
+
+/** Load a previously persisted item log, if it matches the resumed thread. */
+function loadSavedHistory(agentId: string, threadId: string): CodexItem[] | null {
+  try {
+    const file = historyFile(agentId);
+    if (!fs.existsSync(file)) return null;
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (data?.threadId !== threadId || !Array.isArray(data.items)) return null;
+    return data.items as CodexItem[];
+  } catch {
+    return null;
+  }
 }
 
 // ─────────────────────────── Item store ───────────────────────────
@@ -81,6 +146,7 @@ function upsert(s: CodexSession, item: CodexItem): void {
   for (const l of s.listeners) {
     try { l(item); } catch (err) { console.error('[codex-agents] item listener error:', err); }
   }
+  scheduleSave(s);
 }
 
 function itemById(s: CodexSession, id: unknown): CodexItem | undefined {
@@ -279,6 +345,11 @@ function handleNotification(method: string, raw: Record<string, unknown>): void 
       break;
     }
 
+    case 'turn/completed':
+      // Persist the moment a turn finishes — no waiting on the debounce.
+      flushSave(agentId);
+      break;
+
     case 'error':
       upsert(s, { id: randomUUID(), kind: 'error', text: String(params.message || 'error'), ts: now() });
       break;
@@ -388,8 +459,17 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
     catch { /* non-fatal */ }
   }
 
-  // A resumed thread → pull its past turns back into the view.
-  if (resumed) await loadHistory(cs, session);
+  // A resumed thread → restore its conversation. Prefer our own saved log
+  // (full fidelity, incl. tool / command / file cards); fall back to codex's
+  // thread/read, which only returns messages + reasoning.
+  if (resumed) {
+    const saved = loadSavedHistory(agent.id, threadId);
+    if (saved && saved.length > 0) {
+      session.items = saved;
+    } else {
+      await loadHistory(cs, session);
+    }
+  }
 
   upsert(session, {
     id: randomUUID(), kind: 'system',
@@ -456,6 +536,7 @@ export async function listModels(): Promise<string[]> {
 export function stopAgent(agentId: string): boolean {
   const s = sessions.get(agentId);
   if (!s) return false;
+  flushSave(agentId);
   threadToAgent.delete(s.threadId);
   sessions.delete(agentId);
   onStatus(agentId, 'stopped');
