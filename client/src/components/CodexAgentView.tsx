@@ -174,7 +174,12 @@ function CodexItemRow({ item, open, onToggle }: {
           <Ic.sparkles size={10} />
           <span className="cxv-card-t">Thinking</span>
         </button>
-        {open && <div className="cxv-card-b cxv-reasoning">{it.text}</div>}
+        {open && (
+          <div
+            className="cxv-card-b cxv-md cxv-reasoning"
+            dangerouslySetInnerHTML={{ __html: renderMd(it.text || '') }}
+          />
+        )}
       </div>
     );
   }

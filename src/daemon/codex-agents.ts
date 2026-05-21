@@ -30,6 +30,13 @@ interface CodexSession {
 
 const MAX_ITEMS = 500;
 
+/**
+ * Per-thread config override (merged over ~/.codex/config.toml). `detailed`
+ * reasoning summaries make codex stream its thinking — without this the
+ * reasoning items arrive empty.
+ */
+const THREAD_CONFIG = { model_reasoning_summary: 'detailed' };
+
 const sessions = new Map<string, CodexSession>();   // agentId → session
 const threadToAgent = new Map<string, string>();    // threadId → agentId
 let server: CodexAppServer | null = null;
@@ -128,7 +135,9 @@ function normalizeItem(raw: unknown, status: CodexItem['status']): CodexItem | n
     return { id, kind: 'message', role: 'user', text, status, ts: now() };
   }
   if (t === 'reasoning') {
-    return { id, kind: 'reasoning', text: extractReasoning(item), status, ts: now() };
+    const text = extractReasoning(item);
+    if (!text) return null;   // no summary surfaced — don't show an empty card
+    return { id, kind: 'reasoning', text, status, ts: now() };
   }
   if (t === 'commandExecution') {
     const exit = typeof item.exitCode === 'number' ? item.exitCode
@@ -188,7 +197,17 @@ function handleNotification(method: string, raw: Record<string, unknown>): void 
     }
     case 'item/completed': {
       const ci = normalizeItem(params.item, 'done');
-      if (ci) upsert(s, ci);
+      if (ci) {
+        upsert(s, ci);
+      } else {
+        // e.g. a reasoning item streamed via deltas — finalize it rather than
+        // dropping it (normalizeItem skips the empty completed payload).
+        const existing = itemById(s, params.item?.id);
+        if (existing && existing.status === 'running') {
+          existing.status = 'done';
+          upsert(s, existing);
+        }
+      }
       break;
     }
 
@@ -209,6 +228,14 @@ function handleNotification(method: string, raw: Record<string, unknown>): void 
       const it = itemById(s, params.itemId);
       if (it && it.kind === 'command') {
         it.output = (it.output || '') + String(params.delta ?? params.chunk ?? '');
+        upsert(s, it);
+      }
+      break;
+    }
+    case 'item/reasoning/summaryPartAdded': {
+      const it = itemById(s, params.itemId);
+      if (it && it.kind === 'reasoning' && it.text) {
+        it.text += '\n\n';
         upsert(s, it);
       }
       break;
@@ -268,11 +295,14 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
   let threadId = '';
   try {
     if (agent.codexThreadId) {
-      const r = await cs.request('thread/resume', { threadId: agent.codexThreadId, cwd });
+      const r = await cs.request('thread/resume', {
+        threadId: agent.codexThreadId, cwd, config: THREAD_CONFIG,
+      });
       threadId = r?.thread?.id || agent.codexThreadId;
     } else {
       const r = await cs.request('thread/start', {
         cwd, sandbox: 'workspace-write', approvalPolicy: 'on-failure',
+        config: THREAD_CONFIG,
       });
       threadId = r?.thread?.id || '';
     }
@@ -280,6 +310,7 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
     try {
       const r = await cs.request('thread/start', {
         cwd, sandbox: 'workspace-write', approvalPolicy: 'on-failure',
+        config: THREAD_CONFIG,
       });
       threadId = r?.thread?.id || '';
     } catch (err) {

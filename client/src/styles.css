@@ -1764,7 +1764,8 @@ input, select, textarea { font-family: inherit; }
   white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 360px; margin: 0;
 }
 .cxv-card-b.mono, .cxv-card-b .mono { font-family: var(--ff-mono); }
-.cxv-reasoning { font-style: italic; color: var(--text-2); }
+.cxv-reasoning, .cxv-reasoning p, .cxv-reasoning li { color: var(--text-2); font-size: 11px; }
+.cxv-reasoning strong { color: var(--text-1); }
 
 .cxv-badge {
   flex-shrink: 0; font-size: 9.5px; font-family: var(--ff-mono);
