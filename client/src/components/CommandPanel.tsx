@@ -178,7 +178,7 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
       <div className="cmd-drawer" onClick={(e) => e.stopPropagation()}>
         <header className="cmd-h">
           <div className="cmd-h-l">
-            <div className="cmd-mark"><Ic.sparkles size={15} /></div>
+            <div className="cmd-mark"><Ic.logo size={15} /></div>
             <div className="cmd-h-txt">
               <div className="cmd-title">Command</div>
               <div className="cmd-sub">{currentTitle}</div>
@@ -235,7 +235,7 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
           <div className="cmd-body scroll" ref={bodyRef}>
             {messages.length === 0 ? (
               <div className="cmd-intro">
-                <div className="cmd-intro-mark"><Ic.sparkles size={24} /></div>
+                <div className="cmd-intro-mark"><Ic.logo size={24} /></div>
                 <h3>Talk to The Keeper</h3>
                 <p>
                   Your orchestrator brain. Give it plain-language orders — it inspects
@@ -297,7 +297,7 @@ function BrainRow({ m }: { m: BrainMessage }) {
     case 'assistant':
       return (
         <div className="cmd-msg brain">
-          <div className="cmd-avatar"><Ic.sparkles size={11} /></div>
+          <div className="cmd-avatar"><Ic.logo size={11} /></div>
           <div
             className="cmd-bubble cmd-md"
             dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}

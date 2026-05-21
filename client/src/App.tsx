@@ -348,7 +348,7 @@ export default function App() {
               title="Open Command (⌘J)"
               onClick={() => setCommandOpen(true)}
             >
-              <Ic.sparkles size={13} />
+              <Ic.logo size={13} />
               {brainDone && <span className="cmd-trigger-dot" />}
             </button>
             <input
@@ -572,7 +572,7 @@ export default function App() {
           className="brain-toast"
           onClick={() => { setCommandOpen(true); setBrainToast(false); }}
         >
-          <span className="brain-toast-mark"><Ic.sparkles size={14} /></span>
+          <span className="brain-toast-mark"><Ic.logo size={14} /></span>
           <span className="brain-toast-txt">
             <strong>The Keeper finished</strong>
             <span>Tap to see the result</span>
