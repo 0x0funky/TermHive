@@ -46,8 +46,8 @@ const startedAt = new Date().toISOString();
 /** Every connected web client. Normally one, but tolerate reconnects. */
 const clients = new Set<WebSocket>();
 
-/** Per-client output listeners, keyed by agentId, for clean teardown. */
-const clientListeners = new WeakMap<WebSocket, Map<string, (data: string) => void>>();
+/** Per-client attach teardown fns, keyed by agentId, for clean teardown. */
+const clientListeners = new WeakMap<WebSocket, Map<string, () => void>>();
 
 function send(ws: WebSocket, msg: DaemonMessage) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -138,24 +138,25 @@ function emitAgentDispatch(d: AgentDispatch) {
 // ─────────────────────────── Terminal streaming ───────────────────────────
 
 function attachTerminal(ws: WebSocket, agentId: string) {
-  const listeners = clientListeners.get(ws);
-  if (!listeners) return;
-  const existing = listeners.get(agentId);
-  if (existing) runtime.removeOutputListener(agentId, existing);
+  const teardowns = clientListeners.get(ws);
+  if (!teardowns) return;
+  const existing = teardowns.get(agentId);
+  if (existing) existing();
 
-  const listener = (data: string) => {
-    send(ws, { kind: 'event', event: 'terminal:output', agentId, data });
-  };
-  listeners.set(agentId, listener);
-  runtime.addOutputListener(agentId, listener);
+  // PTY agents stream text; Codex agents stream structured items.
+  const teardown = runtime.attach(agentId, {
+    onText: (data) => send(ws, { kind: 'event', event: 'terminal:output', agentId, data }),
+    onItem: (item) => send(ws, { kind: 'event', event: 'codex:item', agentId, item }),
+  });
+  teardowns.set(agentId, teardown);
 }
 
 function detachTerminal(ws: WebSocket, agentId: string) {
-  const listeners = clientListeners.get(ws);
-  const listener = listeners?.get(agentId);
-  if (listener) {
-    runtime.removeOutputListener(agentId, listener);
-    listeners!.delete(agentId);
+  const teardowns = clientListeners.get(ws);
+  const teardown = teardowns?.get(agentId);
+  if (teardown) {
+    teardown();
+    teardowns!.delete(agentId);
   }
 }
 
@@ -527,12 +528,10 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    const listeners = clientListeners.get(ws);
-    if (listeners) {
-      for (const [agentId, listener] of listeners) {
-        runtime.removeOutputListener(agentId, listener);
-      }
-      listeners.clear();
+    const teardowns = clientListeners.get(ws);
+    if (teardowns) {
+      for (const [, teardown] of teardowns) teardown();
+      teardowns.clear();
     }
     clients.delete(ws);
     console.log(`[daemon] web client disconnected (${clients.size} total)`);

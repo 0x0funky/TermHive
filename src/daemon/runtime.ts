@@ -11,6 +11,7 @@
 import * as pty from '../pty-manager.js';
 import * as codex from './codex-agents.js';
 import type { Agent } from '../types.js';
+import type { CodexItem } from './protocol.js';
 
 type StatusFn = (agentId: string, status: string) => void;
 
@@ -45,14 +46,21 @@ export function resizeAgent(agentId: string, cols: number, rows: number): void {
   else pty.resizeAgent(agentId, cols, rows);
 }
 
-export function addOutputListener(agentId: string, listener: (data: string) => void): void {
-  if (isCodex(agentId)) codex.addOutputListener(agentId, listener);
-  else pty.addOutputListener(agentId, listener);
-}
-
-export function removeOutputListener(agentId: string, listener: (data: string) => void): void {
-  if (isCodex(agentId)) codex.removeOutputListener(agentId, listener);
-  else pty.removeOutputListener(agentId, listener);
+/**
+ * Attach to an agent's live output. PTY agents stream text (`onText`); Codex
+ * agents stream structured items (`onItem`, replayed on attach). Returns a
+ * teardown function.
+ */
+export function attach(
+  agentId: string,
+  handlers: { onText: (data: string) => void; onItem: (item: CodexItem) => void },
+): () => void {
+  if (isCodex(agentId)) {
+    for (const it of codex.getItems(agentId)) handlers.onItem(it);
+    return codex.subscribeItems(agentId, handlers.onItem);
+  }
+  pty.addOutputListener(agentId, handlers.onText);
+  return () => pty.removeOutputListener(agentId, handlers.onText);
 }
 
 export function getAgentPreview(agentId: string): string {

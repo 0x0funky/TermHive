@@ -70,6 +70,35 @@ export interface AgentDispatch {
 }
 
 /**
+ * A normalized item in a Codex agent's structured stream (v2.2 UI).
+ * Codex agents run on `codex app-server`, which emits structured events; the
+ * daemon maps each to a CodexItem and the frontend renders it as a real card.
+ */
+export interface CodexItem {
+  id: string;
+  kind: 'message' | 'reasoning' | 'command' | 'file' | 'tool' | 'error' | 'system';
+  /** For kind 'message'. */
+  role?: 'agent' | 'user';
+  /** message / reasoning / error / system text. */
+  text?: string;
+  /** kind 'command'. */
+  command?: string;
+  output?: string;
+  exitCode?: number | null;
+  /** kind 'file'. */
+  path?: string;
+  diff?: string;
+  /** kind 'tool' (MCP tool call). */
+  server?: string;
+  tool?: string;
+  args?: string;
+  result?: string;
+  /** Lifecycle — 'running' while in-flight, then 'done' / 'failed'. */
+  status?: 'running' | 'done' | 'failed';
+  ts: string;
+}
+
+/**
  * Web → Daemon. Messages with an `id` expect a `reply`; messages without an
  * `id` are fire-and-forget commands.
  */
@@ -104,7 +133,8 @@ export type DaemonMessage =
   | { kind: 'event'; event: 'agent:status'; agentId: string; status: string }
   | { kind: 'event'; event: 'brain:event'; payload: BrainEvent }
   | { kind: 'event'; event: 'agent:dispatch'; payload: AgentDispatch }
-  | { kind: 'event'; event: 'org:changed' };
+  | { kind: 'event'; event: 'org:changed' }
+  | { kind: 'event'; event: 'codex:item'; agentId: string; item: CodexItem };
 
 /** Result shapes for each RPC op (for type-safe clients). */
 export interface DaemonRpcResults {

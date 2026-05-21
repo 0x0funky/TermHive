@@ -47,7 +47,7 @@ export interface ProjectData {
   agents: Agent[];
 }
 
-import type { BrainEvent } from './daemon/protocol.js';
+import type { BrainEvent, CodexItem } from './daemon/protocol.js';
 
 // WebSocket message types
 export type WSClientMessage =
@@ -89,4 +89,5 @@ export type WSServerMessage =
   | { type: 'content:updated'; projectId: string; filename: string }
   | { type: 'activity'; event: ActivityEvent }
   | { type: 'brain:event'; payload: BrainEvent }
-  | { type: 'org:changed' };
+  | { type: 'org:changed' }
+  | { type: 'codex:item'; agentId: string; item: CodexItem };

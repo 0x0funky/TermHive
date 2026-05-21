@@ -1690,3 +1690,130 @@ input, select, textarea { font-family: inherit; }
 }
 .cmd-hist-row:hover .cmd-hist-del { opacity: 1; }
 .cmd-hist-del:hover { background: var(--err-soft); color: var(--err); }
+
+/* ==========================================================
+   Codex agent view — v2.2 structured app-server rendering
+   ========================================================== */
+
+.cxv { height: 100%; display: flex; flex-direction: column; background: var(--bg-1); min-height: 0; }
+.cxv-body {
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.cxv-empty { margin: auto; color: var(--text-3); font-size: 12px; }
+
+.cxv-system { text-align: center; font-size: 10.5px; color: var(--text-3); padding: 2px; }
+.cxv-error {
+  background: var(--err-soft); color: var(--err);
+  font-size: 12px; line-height: 1.5; padding: 8px 11px; border-radius: 7px;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* messages */
+.cxv-msg { display: flex; gap: 8px; }
+.cxv-msg.user { justify-content: flex-end; }
+.cxv-msg.agent { align-items: flex-start; }
+.cxv-avatar {
+  width: 20px; height: 20px; border-radius: 5px; flex-shrink: 0; margin-top: 1px;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+}
+.cxv-bubble {
+  background: var(--accent-soft); color: var(--text-0);
+  border: 1px solid var(--border); border-radius: 9px; border-bottom-right-radius: 3px;
+  padding: 7px 11px; font-size: 12.5px; line-height: 1.5;
+  max-width: 85%; white-space: pre-wrap; word-break: break-word;
+}
+.cxv-md {
+  flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.6;
+  color: var(--text-0); word-break: break-word;
+}
+.cxv-md > :first-child { margin-top: 0; }
+.cxv-md > :last-child { margin-bottom: 0; }
+.cxv-md p { margin: 0 0 8px; }
+.cxv-md h1, .cxv-md h2, .cxv-md h3 { font-size: 13.5px; font-weight: 600; margin: 12px 0 6px; }
+.cxv-md ul, .cxv-md ol { margin: 0 0 8px; padding-left: 20px; }
+.cxv-md li { margin-bottom: 3px; }
+.cxv-md code { font-family: var(--ff-mono); font-size: 11px; background: var(--bg-3); padding: 1px 5px; border-radius: 3px; }
+.cxv-md pre { background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; overflow: auto; margin: 0 0 8px; }
+.cxv-md pre code { background: transparent; padding: 0; font-size: 11px; }
+.cxv-md a { color: var(--accent); text-decoration: none; }
+.cxv-md a:hover { text-decoration: underline; }
+.cxv-md table { border-collapse: collapse; font-size: 11.5px; margin: 0 0 8px; }
+.cxv-md th, .cxv-md td { border: 1px solid var(--border); padding: 4px 8px; }
+
+/* cards — command / tool / file / reasoning */
+.cxv-card { border: 1px solid var(--border); border-radius: 7px; background: var(--bg-2); overflow: hidden; }
+.cxv-card-h {
+  width: 100%; display: flex; align-items: center; gap: 7px;
+  padding: 6px 9px; background: transparent; border: none; cursor: pointer;
+  color: var(--text-1); font-size: 11.5px; text-align: left;
+}
+.cxv-card-h:hover { background: var(--bg-hover); }
+.cxv-card-h svg { flex-shrink: 0; color: var(--text-2); }
+.cxv-chev { transition: transform 0.12s; }
+.cxv-chev.rot { transform: rotate(90deg); }
+.cxv-card-t {
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; color: var(--text-0);
+}
+.cxv-card-t.mono { font-family: var(--ff-mono); font-size: 11px; }
+.cxv-card-b {
+  padding: 8px 11px; border-top: 1px solid var(--border);
+  font-size: 11px; line-height: 1.5; color: var(--text-1);
+  white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 360px; margin: 0;
+}
+.cxv-card-b.mono, .cxv-card-b .mono { font-family: var(--ff-mono); }
+.cxv-reasoning { font-style: italic; color: var(--text-2); }
+
+.cxv-badge {
+  flex-shrink: 0; font-size: 9.5px; font-family: var(--ff-mono);
+  padding: 1px 6px; border-radius: 10px;
+}
+.cxv-badge.ok { background: var(--ok-soft); color: var(--ok); }
+.cxv-badge.err { background: var(--err-soft); color: var(--err); }
+.cxv-badge.run { background: var(--accent-soft); color: var(--accent); }
+
+.cxv-kv { margin-bottom: 6px; }
+.cxv-kv:last-child { margin-bottom: 0; }
+.cxv-kv-k { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); }
+.cxv-kv pre {
+  margin: 2px 0 0; background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: 4px; padding: 6px 8px; overflow: auto; font-size: 10.5px;
+}
+
+/* diff */
+.cxv-diff { padding: 4px 0; }
+.cxv-diff-l { padding: 0 11px; white-space: pre-wrap; word-break: break-word; }
+.cxv-diff-l.add { background: var(--ok-soft); color: var(--ok); }
+.cxv-diff-l.del { background: var(--err-soft); color: var(--err); }
+.cxv-diff-l.hunk { background: var(--accent-soft); color: var(--accent); }
+
+.cxv-working { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); padding: 2px 4px; }
+.cxv-working .cxv-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  animation: cmd-pulse 1.1s ease-in-out infinite;
+}
+.cxv-working .cxv-dot:nth-child(2) { animation-delay: 0.16s; }
+.cxv-working .cxv-dot:nth-child(3) { animation-delay: 0.32s; }
+
+/* composer */
+.cxv-compose {
+  display: flex; align-items: flex-end; gap: 8px;
+  padding: 9px 11px; border-top: 1px solid var(--border); background: var(--bg-1); flex-shrink: 0;
+}
+.cxv-compose textarea {
+  flex: 1; resize: none; max-height: 120px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 10px; color: var(--text-0);
+  font-family: var(--ff-sans); font-size: 12px; line-height: 1.5; outline: none;
+}
+.cxv-compose textarea:focus { border-color: var(--accent); }
+.cxv-compose textarea::placeholder { color: var(--text-3); }
+.cxv-send {
+  width: 32px; height: 32px; flex-shrink: 0;
+  background: var(--accent); color: #0a0a0a; border: none; border-radius: 7px;
+  display: grid; place-items: center; cursor: pointer;
+}
+.cxv-send:hover { background: var(--accent-hover); }
+.cxv-send:disabled { opacity: 0.4; cursor: not-allowed; }

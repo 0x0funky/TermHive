@@ -59,6 +59,11 @@ daemon.onStatus((agentId, status) => {
   broadcastStatus(agentId, status);
 });
 
+// Structured Codex items from the daemon → broadcast to all browsers
+daemon.onCodexItem((agentId, item) => {
+  broadcast({ type: 'codex:item', agentId, item });
+});
+
 // Orchestrator brain events from the daemon → broadcast to all browsers
 daemon.onBrain((payload) => {
   broadcast({ type: 'brain:event', payload });

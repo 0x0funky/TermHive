@@ -1,46 +1,41 @@
 /**
  * codex-agents.ts — the Codex agent runtime (v2.2).
  *
- * Codex agents no longer run in a PTY. They run as **threads** inside one
- * shared `codex app-server` process. This module is the PTY-runtime's
- * counterpart for Codex: it exposes the same surface (startAgent / stopAgent /
- * output listeners / injectMessage / …) so the daemon can route by CLI.
- *
- * app-server events (agent messages, tool calls, command output) are rendered
- * into a plain-text stream so the existing xterm view shows a terminal-like
- * log. Thread status feeds the v2.1 status engine.
+ * Codex agents run as **threads** inside one shared `codex app-server` process.
+ * app-server emits structured events; this module normalizes them into
+ * `CodexItem`s and streams them to the frontend, which renders a real
+ * structured view (messages, collapsible tool cards, diffs) rather than a
+ * flat terminal log.
  */
 
 import os from 'os';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import type { Agent } from '../types.js';
+import type { CodexItem } from './protocol.js';
 import { updateAgent } from '../storage.js';
 import { CodexAppServer } from './codex-server.js';
 
 type StatusFn = (agentId: string, status: string) => void;
+type ItemListener = (item: CodexItem) => void;
 
 interface CodexSession {
   agent: Agent;
   threadId: string;
-  buffer: string[];
-  listeners: Set<(data: string) => void>;
+  items: CodexItem[];
+  listeners: Set<ItemListener>;
   status: string;
   inputLine: string;
-  streamingItems: Set<string>;
 }
 
-const MAX_BUFFER = 2000;
+const MAX_ITEMS = 500;
 
 const sessions = new Map<string, CodexSession>();   // agentId → session
 const threadToAgent = new Map<string, string>();    // threadId → agentId
 let server: CodexAppServer | null = null;
 let onStatus: StatusFn = () => {};
 
-// ─────────────────────────── ANSI helpers ───────────────────────────
-
-const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
-const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+const now = () => new Date().toISOString();
 
 /** Expand a leading ~ to the user's home directory. */
 function expandHome(p: string): string {
@@ -55,11 +50,9 @@ function getServer(): CodexAppServer {
   if (server) return server;
   const s = new CodexAppServer();
   s.onNotification(handleNotification);
-  // Codex agents do real work — auto-approve so they aren't blocked waiting
-  // for a human who isn't watching the JSON-RPC channel.
+  // Codex agents do real work — auto-approve so they aren't blocked.
   s.onServerRequest(() => ({ decision: 'approved' }));
   s.onExit(() => {
-    // The app-server died — every Codex agent is down. (Stage 4 re-resumes.)
     for (const agentId of [...sessions.keys()]) onStatus(agentId, 'stopped');
     sessions.clear();
     threadToAgent.clear();
@@ -68,13 +61,24 @@ function getServer(): CodexAppServer {
   return s;
 }
 
-// ─────────────────────────── Rendering ───────────────────────────
+// ─────────────────────────── Item store ───────────────────────────
 
-function emit(s: CodexSession, data: string): void {
-  if (!data) return;
-  s.buffer.push(data);
-  if (s.buffer.length > MAX_BUFFER) s.buffer.splice(0, s.buffer.length - MAX_BUFFER);
-  for (const l of s.listeners) l(data);
+function upsert(s: CodexSession, item: CodexItem): void {
+  const idx = s.items.findIndex((i) => i.id === item.id);
+  if (idx >= 0) {
+    s.items[idx] = item;
+  } else {
+    s.items.push(item);
+    if (s.items.length > MAX_ITEMS) s.items.splice(0, s.items.length - MAX_ITEMS);
+  }
+  for (const l of s.listeners) {
+    try { l(item); } catch (err) { console.error('[codex-agents] item listener error:', err); }
+  }
+}
+
+function itemById(s: CodexSession, id: unknown): CodexItem | undefined {
+  if (typeof id !== 'string') return undefined;
+  return s.items.find((i) => i.id === id);
 }
 
 function setStatus(s: CodexSession, status: string): void {
@@ -83,32 +87,88 @@ function setStatus(s: CodexSession, status: string): void {
   onStatus(s.agent.id, status);
 }
 
-function renderCompletedItem(s: CodexSession, item: Record<string, any>): void {
-  const type = String(item?.type || '');
-  if (type === 'agentMessage') {
-    if (s.streamingItems.has(item.id)) {
-      s.streamingItems.delete(item.id);
-      emit(s, '\r\n');
-    } else {
-      emit(s, String(item.text || '') + '\r\n');
+// ─────────────────────────── Event → CodexItem ───────────────────────────
+
+function extractReasoning(item: Record<string, any>): string {
+  const parts: string[] = [];
+  for (const arr of [item.summary, item.content]) {
+    if (Array.isArray(arr)) {
+      for (const e of arr) {
+        if (typeof e === 'string') parts.push(e);
+        else if (e && typeof e.text === 'string') parts.push(e.text);
+      }
     }
-  } else if (type === 'commandExecution') {
-    const cmd = String(item.command || item.cmd || '');
-    emit(s, cyan('$ ' + cmd) + '\r\n');
-    const out = item.aggregatedOutput || item.output || '';
-    if (out) emit(s, String(out).replace(/\r?\n/g, '\r\n').trimEnd() + '\r\n');
-  } else if (type === 'mcpToolCall') {
-    const name = (item.server ? item.server + '/' : '') + (item.tool || item.name || 'tool');
-    emit(s, cyan('⏺ ' + name) + '\r\n');
-  } else if (type === 'fileChange') {
-    emit(s, cyan('✎ file change: ' + (item.path || item.title || '')) + '\r\n');
-  } else if (type === 'error') {
-    emit(s, red(String(item.message || 'error')) + '\r\n');
   }
-  // userMessage (we echo locally), reasoning, plan, etc. — not surfaced.
+  if (typeof item.text === 'string') parts.push(item.text);
+  return parts.join('\n').trim();
 }
 
-function handleNotification(method: string, params: Record<string, any>): void {
+function stringify(v: unknown, cap = 4000): string {
+  if (v === undefined || v === null) return '';
+  let s: string;
+  if (typeof v === 'string') s = v;
+  else { try { s = JSON.stringify(v); } catch { s = String(v); } }
+  return s.length > cap ? s.slice(0, cap) + '…' : s;
+}
+
+/** Map one app-server thread item to a normalized CodexItem (or null to skip). */
+function normalizeItem(raw: unknown, status: CodexItem['status']): CodexItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, any>;
+  const id = String(item.id || randomUUID());
+  const t = String(item.type || '');
+
+  if (t === 'agentMessage') {
+    return { id, kind: 'message', role: 'agent', text: String(item.text || ''), status, ts: now() };
+  }
+  if (t === 'userMessage') {
+    const text = Array.isArray(item.content)
+      ? item.content.filter((c: any) => c?.type === 'text').map((c: any) => c.text).join('')
+      : String(item.text || '');
+    return { id, kind: 'message', role: 'user', text, status, ts: now() };
+  }
+  if (t === 'reasoning') {
+    return { id, kind: 'reasoning', text: extractReasoning(item), status, ts: now() };
+  }
+  if (t === 'commandExecution') {
+    const exit = typeof item.exitCode === 'number' ? item.exitCode
+      : (typeof item.exit_code === 'number' ? item.exit_code : null);
+    return {
+      id, kind: 'command',
+      command: String(item.command || item.cmd || ''),
+      output: String(item.aggregatedOutput || item.output || ''),
+      exitCode: exit,
+      status, ts: now(),
+    };
+  }
+  if (t === 'mcpToolCall') {
+    const inv = item.invocation || {};
+    return {
+      id, kind: 'tool',
+      server: String(item.server || inv.server || ''),
+      tool: String(item.tool || item.name || inv.tool || 'tool'),
+      args: stringify(item.arguments ?? inv.arguments, 600),
+      result: stringify(item.result, 4000),
+      status, ts: now(),
+    };
+  }
+  if (t === 'fileChange') {
+    return {
+      id, kind: 'file',
+      path: String(item.path || item.title || ''),
+      diff: typeof item.diff === 'string' ? item.diff : stringify(item.changes, 8000),
+      status, ts: now(),
+    };
+  }
+  if (t === 'error') {
+    return { id, kind: 'error', text: String(item.message || 'error'), status, ts: now() };
+  }
+  // todo_list / plan / imageView / etc. — not surfaced yet.
+  return null;
+}
+
+function handleNotification(method: string, raw: Record<string, unknown>): void {
+  const params = raw as Record<string, any>;
   const threadId: string | undefined = params.threadId || params.thread?.id;
   if (!threadId) return;
   const agentId = threadToAgent.get(threadId);
@@ -117,28 +177,60 @@ function handleNotification(method: string, params: Record<string, any>): void {
   if (!s) return;
 
   switch (method) {
-    case 'thread/status/changed': {
-      const type = params.status?.type;
-      setStatus(s, type === 'active' ? 'running' : 'awaiting_input');
+    case 'thread/status/changed':
+      setStatus(s, params.status?.type === 'active' ? 'running' : 'awaiting_input');
       break;
-    }
-    case 'item/agentMessage/delta': {
-      if (params.itemId) s.streamingItems.add(String(params.itemId));
-      emit(s, String(params.delta || ''));
+
+    case 'item/started': {
+      const ci = normalizeItem(params.item, 'running');
+      if (ci) upsert(s, ci);
       break;
     }
     case 'item/completed': {
-      if (params.item) renderCompletedItem(s, params.item);
+      const ci = normalizeItem(params.item, 'done');
+      if (ci) upsert(s, ci);
       break;
     }
-    case 'turn/completed': {
-      emit(s, '\r\n');
+
+    case 'item/agentMessage/delta': {
+      const it = itemById(s, params.itemId);
+      if (it && it.kind === 'message') {
+        it.text = (it.text || '') + String(params.delta || '');
+        upsert(s, it);
+      } else if (typeof params.itemId === 'string') {
+        upsert(s, {
+          id: params.itemId, kind: 'message', role: 'agent',
+          text: String(params.delta || ''), status: 'running', ts: now(),
+        });
+      }
       break;
     }
-    case 'error': {
-      emit(s, red('error: ' + (params.message || JSON.stringify(params))) + '\r\n');
+    case 'item/commandExecution/outputDelta': {
+      const it = itemById(s, params.itemId);
+      if (it && it.kind === 'command') {
+        it.output = (it.output || '') + String(params.delta ?? params.chunk ?? '');
+        upsert(s, it);
+      }
       break;
     }
+    case 'item/reasoning/textDelta':
+    case 'item/reasoning/summaryTextDelta': {
+      const it = itemById(s, params.itemId);
+      if (it && it.kind === 'reasoning') {
+        it.text = (it.text || '') + String(params.delta || '');
+        upsert(s, it);
+      } else if (typeof params.itemId === 'string') {
+        upsert(s, {
+          id: params.itemId, kind: 'reasoning',
+          text: String(params.delta || ''), status: 'running', ts: now(),
+        });
+      }
+      break;
+    }
+
+    case 'error':
+      upsert(s, { id: randomUUID(), kind: 'error', text: String(params.message || 'error'), ts: now() });
+      break;
   }
 }
 
@@ -150,13 +242,16 @@ function submitTurn(s: CodexSession, text: string): void {
     threadId: s.threadId,
     input: [{ type: 'text', text }],
   }).catch((err) => {
-    emit(s, red('turn failed: ' + (err instanceof Error ? err.message : String(err))) + '\r\n');
+    upsert(s, {
+      id: randomUUID(), kind: 'error',
+      text: 'turn failed: ' + (err instanceof Error ? err.message : String(err)),
+      ts: now(),
+    });
   });
 }
 
 // ─────────────────────────── Public API ───────────────────────────
 
-/** Start a Codex agent as an app-server thread. */
 export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<boolean> {
   onStatus = statusFn;
   if (sessions.has(agent.id)) return true;
@@ -182,7 +277,6 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
       threadId = r?.thread?.id || '';
     }
   } catch {
-    // resume can fail if the thread is gone — fall back to a fresh thread
     try {
       const r = await cs.request('thread/start', {
         cwd, sandbox: 'workspace-write', approvalPolicy: 'on-failure',
@@ -198,11 +292,10 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
   const session: CodexSession = {
     agent,
     threadId,
-    buffer: [],
+    items: [],
     listeners: new Set(),
     status: 'running',
     inputLine: '',
-    streamingItems: new Set(),
   };
   sessions.set(agent.id, session);
   threadToAgent.set(threadId, agent.id);
@@ -212,19 +305,21 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
     catch { /* non-fatal */ }
   }
 
-  emit(session, dim(`● Codex agent on app-server thread ${threadId.slice(0, 8)}`) + '\r\n');
+  upsert(session, {
+    id: randomUUID(), kind: 'system',
+    text: `Codex agent online — app-server thread ${threadId.slice(0, 8)}`,
+    ts: now(),
+  });
   onStatus(agent.id, 'running');
   return true;
 }
 
-/** Stop tracking a Codex agent. The thread is kept (resumable). */
 export function stopAgent(agentId: string): boolean {
   const s = sessions.get(agentId);
   if (!s) return false;
   threadToAgent.delete(s.threadId);
   sessions.delete(agentId);
   onStatus(agentId, 'stopped');
-  // Last Codex agent gone → free the app-server (ensureStarted respawns later).
   if (sessions.size === 0 && server) {
     server.stop();
     server = null;
@@ -232,7 +327,7 @@ export function stopAgent(agentId: string): boolean {
   return true;
 }
 
-/** Feed terminal keystrokes — buffered into a line, submitted as a turn. */
+/** Terminal input from the composer — buffered into a line, submitted as a turn. */
 export function writeToAgent(agentId: string, data: string): void {
   const s = sessions.get(agentId);
   if (!s) return;
@@ -240,28 +335,20 @@ export function writeToAgent(agentId: string, data: string): void {
     if (ch === '\r' || ch === '\n') {
       const line = s.inputLine;
       s.inputLine = '';
-      emit(s, '\r\n');
       if (line.trim()) submitTurn(s, line.trim());
     } else if (ch === '\x7f' || ch === '\b') {
-      if (s.inputLine.length > 0) {
-        s.inputLine = s.inputLine.slice(0, -1);
-        emit(s, '\b \b');
-      }
+      s.inputLine = s.inputLine.slice(0, -1);
     } else if (ch >= ' ') {
       s.inputLine += ch;
-      emit(s, ch);
     }
   }
 }
 
-/** Inject a message (agent-to-agent / orchestrator) and run it as a turn. */
+/** Inject a message and run it as a turn (the userMessage item renders it). */
 export function injectMessage(agentId: string, fromName: string, message: string): boolean {
   const s = sessions.get(agentId);
   if (!s) return false;
-  const clean = message.replace(/\r/g, '').trim();
-  const banner = `[Message from ${fromName}]: ${clean}`;
-  emit(s, '\r\n' + dim(banner) + '\r\n');
-  submitTurn(s, banner);
+  submitTurn(s, `[Message from ${fromName}]: ${message.replace(/\r/g, '').trim()}`);
   return true;
 }
 
@@ -274,16 +361,11 @@ export interface CodexAskResult {
 
 const ASK_TIMEOUT_MS = 120_000;
 
-/**
- * Run a turn on a Codex agent and wait for its reply — the Codex side of
- * `ask_agent`. The turn also renders normally into the agent's terminal.
- */
+/** Run a turn and wait for the reply — the Codex side of `ask_agent`. */
 export async function askAgent(agentId: string, message: string): Promise<CodexAskResult> {
   const s = sessions.get(agentId);
   if (!s || !server) return { ok: false, status: 'not-running', reply: null };
   const cs = server;
-
-  emit(s, '\r\n' + dim(`[Message from Hive Orchestrator]: ${message}`) + '\r\n');
 
   let turnId = '';
   try {
@@ -329,25 +411,29 @@ export function resizeAgent(_agentId: string, _cols: number, _rows: number): voi
   /* intentionally empty */
 }
 
-export function addOutputListener(agentId: string, listener: (data: string) => void): void {
-  const s = sessions.get(agentId);
-  if (!s) return;
-  for (const chunk of s.buffer) listener(chunk);
-  s.listeners.add(listener);
+/** Current structured items, for replay when a client attaches. */
+export function getItems(agentId: string): CodexItem[] {
+  return sessions.get(agentId)?.items.slice() ?? [];
 }
 
-export function removeOutputListener(agentId: string, listener: (data: string) => void): void {
-  sessions.get(agentId)?.listeners.delete(listener);
+/** Subscribe to live structured items. */
+export function subscribeItems(agentId: string, listener: ItemListener): () => void {
+  const s = sessions.get(agentId);
+  if (!s) return () => { /* nothing */ };
+  s.listeners.add(listener);
+  return () => { sessions.get(agentId)?.listeners.delete(listener); };
 }
 
 export function getAgentPreview(agentId: string): string {
   const s = sessions.get(agentId);
-  if (!s || s.buffer.length === 0) return '';
-  const tail = s.buffer.slice(-40).join('')
-    .replace(/\x1b\[[0-9;]*m/g, '')
-    .replace(/[\r\b]/g, '');
-  const lines = tail.split('\n').map((l) => l.trim()).filter((l) => l.length > 2);
-  return (lines[lines.length - 1] || '').slice(0, 60);
+  if (!s) return '';
+  for (let i = s.items.length - 1; i >= 0; i--) {
+    const it = s.items[i];
+    if (it.kind === 'message' && it.text) {
+      return it.text.replace(/\s+/g, ' ').trim().slice(0, 60);
+    }
+  }
+  return '';
 }
 
 export function isAgentRunning(agentId: string): boolean {

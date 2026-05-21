@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useRef, Fragment } from 'react';
 import Terminal from './Terminal';
+import CodexAgentView from './CodexAgentView';
 import Ic from './Icons';
 import { agentHue, agentInitials } from '../utils/agentIdentity';
 import type { Agent } from '../api';
@@ -198,13 +199,23 @@ function AgentPane({
 
       <div className="pane-body">
         {isAlive ? (
-          <Terminal
-            agentId={agent.id}
-            send={send}
-            wsRef={wsRef}
-            onFocus={onFocus}
-            focused={focused}
-          />
+          agent.cli === 'codex' ? (
+            <CodexAgentView
+              agentId={agent.id}
+              send={send}
+              wsRef={wsRef}
+              onFocus={onFocus}
+              focused={focused}
+            />
+          ) : (
+            <Terminal
+              agentId={agent.id}
+              send={send}
+              wsRef={wsRef}
+              onFocus={onFocus}
+              focused={focused}
+            />
+          )
         ) : (
           <div className="pane-stopped">
             <div className="label">agent stopped</div>
