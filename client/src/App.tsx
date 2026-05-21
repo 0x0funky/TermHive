@@ -39,6 +39,8 @@ export default function App() {
   // while the Command panel is closed.
   const [brainDone, setBrainDone] = useState(false);
   const [brainToast, setBrainToast] = useState(false);
+  const [brainWorking, setBrainWorking] = useState(false);
+  const [quickCmd, setQuickCmd] = useState('');
   const commandOpenRef = useRef(commandOpen);
   commandOpenRef.current = commandOpen;
   const brainBusyRef = useRef(false);
@@ -115,8 +117,10 @@ export default function App() {
       if (p?.kind === 'status') {
         if (p.status === 'thinking') {
           brainBusyRef.current = true;
+          setBrainWorking(true);
         } else if (p.status === 'idle' && brainBusyRef.current) {
           brainBusyRef.current = false;
+          setBrainWorking(false);
           if (!commandOpenRef.current) {
             setBrainDone(true);
             setBrainToast(true);
@@ -284,6 +288,17 @@ export default function App() {
     await loadAgents(pid);
   };
 
+  // Fire a one-off command at the orchestrator brain straight from the header,
+  // without opening the Command drawer.
+  const fireQuickCmd = () => {
+    const text = quickCmd.trim();
+    if (!text || brainWorking) return;
+    send({ type: 'brain:send', message: text });
+    setQuickCmd('');
+    brainBusyRef.current = true;
+    setBrainWorking(true);
+  };
+
   const logoImg = theme === 'light' ? logoLight : logoDark;
 
   const appCls = ['app'];
@@ -327,18 +342,27 @@ export default function App() {
             <span>Search</span>
             <kbd>{MOD}K</kbd>
           </button>
-          <button
-            className={'hbtn kbd cmd-trigger' + (brainDone ? ' has-result' : '')}
-            title={brainDone
-              ? 'The Keeper finished — click to view'
-              : 'Command — talk to the orchestrator brain'}
-            onClick={() => setCommandOpen(true)}
-          >
-            <Ic.sparkles size={12} />
-            <span>Command</span>
+          <div className={'cmd-quick' + (brainWorking ? ' working' : '')}>
+            <button
+              className="cmd-quick-mark"
+              title="Open Command (⌘J)"
+              onClick={() => setCommandOpen(true)}
+            >
+              <Ic.sparkles size={13} />
+              {brainDone && <span className="cmd-trigger-dot" />}
+            </button>
+            <input
+              className="cmd-quick-input"
+              value={quickCmd}
+              onChange={(e) => setQuickCmd(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); fireQuickCmd(); }
+              }}
+              placeholder={brainWorking ? 'The Keeper is working…' : 'Ask The Keeper…'}
+              disabled={brainWorking}
+            />
             <kbd>{MOD}J</kbd>
-            {brainDone && <span className="cmd-trigger-dot" />}
-          </button>
+          </div>
           <div className="layout-seg" role="tablist" aria-label="Layout">
             {LAYOUT_ICONS.map(({ v, Icon, title }) => (
               <button
@@ -532,7 +556,18 @@ export default function App() {
         wsRef={wsRef}
       />
 
-      {brainToast && !commandOpen && (
+      {!commandOpen && brainWorking && (
+        <button className="brain-toast working" onClick={() => setCommandOpen(true)}>
+          <span className="brain-toast-dots">
+            <span className="cmd-dot" /><span className="cmd-dot" /><span className="cmd-dot" />
+          </span>
+          <span className="brain-toast-txt">
+            <strong>The Keeper is working…</strong>
+            <span>Tap to watch</span>
+          </span>
+        </button>
+      )}
+      {!commandOpen && !brainWorking && brainToast && (
         <button
           className="brain-toast"
           onClick={() => { setCommandOpen(true); setBrainToast(false); }}

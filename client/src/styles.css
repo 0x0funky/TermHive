@@ -1665,6 +1665,33 @@ input, select, textarea { font-family: inherit; }
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+.brain-toast.working { border-color: var(--border-strong); cursor: pointer; }
+.brain-toast-dots {
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  background: var(--bg-3); display: flex; align-items: center;
+  justify-content: center; gap: 3px;
+}
+
+/* header quick-command input — fire a command without opening the drawer */
+.cmd-quick {
+  display: flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 5px 0 3px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 8px; width: 244px; min-width: 130px;
+}
+.cmd-quick:focus-within, .cmd-quick.working { border-color: var(--accent); }
+.cmd-quick-mark {
+  position: relative; display: grid; place-items: center;
+  width: 23px; height: 23px; border-radius: 6px; flex-shrink: 0;
+  background: transparent; border: none; cursor: pointer; color: var(--accent);
+}
+.cmd-quick-mark:hover { background: var(--bg-hover); }
+.cmd-quick-input {
+  flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+  color: var(--text-0); font-size: 12px; font-family: var(--ff-sans);
+}
+.cmd-quick-input::placeholder { color: var(--text-3); }
+.cmd-quick > kbd { flex-shrink: 0; }
 
 /* Thinking indicator */
 .cmd-thinking {
