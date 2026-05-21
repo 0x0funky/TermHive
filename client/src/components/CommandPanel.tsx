@@ -14,7 +14,13 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { marked } from 'marked';
 import Ic from './Icons';
+
+function renderMd(text: string): string {
+  try { return marked.parse(text, { async: false }) as string; }
+  catch { return text; }
+}
 
 interface BrainMessage {
   id: string;
@@ -292,7 +298,10 @@ function BrainRow({ m }: { m: BrainMessage }) {
       return (
         <div className="cmd-msg brain">
           <div className="cmd-avatar"><Ic.sparkles size={11} /></div>
-          <div className="cmd-bubble">{m.text}</div>
+          <div
+            className="cmd-bubble cmd-md"
+            dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}
+          />
         </div>
       );
     case 'tool':

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import AgentGrid, { type GridLayout } from './components/AgentGrid';
 import SharedContentView from './components/SharedContent';
@@ -35,6 +35,14 @@ export default function App() {
   const [mainTab, setMainTab] = useState<MainTab>('terminals');
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  // Orchestrator-brain completion cue — shown when the brain finishes a task
+  // while the Command panel is closed.
+  const [brainDone, setBrainDone] = useState(false);
+  const [brainToast, setBrainToast] = useState(false);
+  const commandOpenRef = useRef(commandOpen);
+  commandOpenRef.current = commandOpen;
+  const brainBusyRef = useRef(false);
+  const brainToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem('termhive:theme') as Theme) || 'dark';
@@ -101,6 +109,23 @@ export default function App() {
       loadProjects();
       if (selectedProjectId) loadAgents(selectedProjectId);
     }
+    if (msg.type === 'brain:event') {
+      // Detect the orchestrator finishing a task (thinking → idle).
+      const p = (msg as { payload?: { kind?: string; status?: string } }).payload;
+      if (p?.kind === 'status') {
+        if (p.status === 'thinking') {
+          brainBusyRef.current = true;
+        } else if (p.status === 'idle' && brainBusyRef.current) {
+          brainBusyRef.current = false;
+          if (!commandOpenRef.current) {
+            setBrainDone(true);
+            setBrainToast(true);
+            if (brainToastTimer.current) clearTimeout(brainToastTimer.current);
+            brainToastTimer.current = setTimeout(() => setBrainToast(false), 8000);
+          }
+        }
+      }
+    }
     if (msg.type === 'agent:status' && msg.agentId && msg.status) {
       setAgents((prev) => {
         const next = new Map(prev);
@@ -126,6 +151,11 @@ export default function App() {
   }, []);
 
   useEffect(() => { loadProjects(); }, []);
+
+  // Opening the Command panel clears the brain-completion cue.
+  useEffect(() => {
+    if (commandOpen) { setBrainDone(false); setBrainToast(false); }
+  }, [commandOpen]);
 
   useEffect(() => {
     if (selectedProjectId) loadAgents(selectedProjectId);
@@ -298,13 +328,16 @@ export default function App() {
             <kbd>{MOD}K</kbd>
           </button>
           <button
-            className="hbtn kbd cmd-trigger"
-            title="Command — talk to the orchestrator brain"
+            className={'hbtn kbd cmd-trigger' + (brainDone ? ' has-result' : '')}
+            title={brainDone
+              ? 'The Keeper finished — click to view'
+              : 'Command — talk to the orchestrator brain'}
             onClick={() => setCommandOpen(true)}
           >
             <Ic.sparkles size={12} />
             <span>Command</span>
             <kbd>{MOD}J</kbd>
+            {brainDone && <span className="cmd-trigger-dot" />}
           </button>
           <div className="layout-seg" role="tablist" aria-label="Layout">
             {LAYOUT_ICONS.map(({ v, Icon, title }) => (
@@ -498,6 +531,19 @@ export default function App() {
         onClose={() => setCommandOpen(false)}
         wsRef={wsRef}
       />
+
+      {brainToast && !commandOpen && (
+        <button
+          className="brain-toast"
+          onClick={() => { setCommandOpen(true); setBrainToast(false); }}
+        >
+          <span className="brain-toast-mark"><Ic.sparkles size={14} /></span>
+          <span className="brain-toast-txt">
+            <strong>The Keeper finished</strong>
+            <span>Tap to see the result</span>
+          </span>
+        </button>
+      )}
 
       {showNewProject && (
         <CreateProjectModal

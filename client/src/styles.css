@@ -1579,6 +1579,27 @@ input, select, textarea { font-family: inherit; }
   border: 1px solid var(--border); border-bottom-left-radius: 3px;
 }
 
+/* markdown-rendered brain answers */
+.cmd-bubble.cmd-md { white-space: normal; }
+.cmd-md > :first-child { margin-top: 0; }
+.cmd-md > :last-child { margin-bottom: 0; }
+.cmd-md p { margin: 0 0 8px; }
+.cmd-md h1, .cmd-md h2, .cmd-md h3 { font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+.cmd-md ul, .cmd-md ol { margin: 0 0 8px; padding-left: 20px; }
+.cmd-md li { margin-bottom: 3px; }
+.cmd-md code { font-family: var(--ff-mono); font-size: 11px; background: var(--bg-3); padding: 1px 5px; border-radius: 3px; }
+.cmd-md pre { background: var(--bg-1); border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; overflow: auto; margin: 0 0 8px; }
+.cmd-md pre code { background: transparent; padding: 0; }
+.cmd-md a { color: var(--accent); text-decoration: none; }
+.cmd-md a:hover { text-decoration: underline; }
+.cmd-md strong { font-weight: 600; }
+.cmd-md table { border-collapse: collapse; font-size: 11.5px; margin: 0 0 8px; }
+.cmd-md th, .cmd-md td { border: 1px solid var(--border); padding: 4px 8px; }
+.cmd-md blockquote {
+  margin: 0 0 8px; padding-left: 10px;
+  border-left: 2px solid var(--border-strong); color: var(--text-2);
+}
+
 /* Tool call rows */
 .cmd-tool {
   display: flex; align-items: center; gap: 6px;
@@ -1608,6 +1629,39 @@ input, select, textarea { font-family: inherit; }
 .cmd-system {
   text-align: center; font-size: 11px; color: var(--text-3);
   padding: 2px 8px;
+}
+
+/* brain-completion cue — dot on the Command button + toast */
+.cmd-trigger { position: relative; }
+.cmd-trigger.has-result { color: var(--accent); }
+.cmd-trigger-dot {
+  position: absolute; top: 3px; right: 3px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--bg-1);
+  animation: cmd-pulse 1.4s ease-in-out infinite;
+}
+
+.brain-toast {
+  position: fixed; bottom: 18px; right: 18px; z-index: 200;
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-radius: 10px;
+  background: var(--bg-2); border: 1px solid var(--accent);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  cursor: pointer; text-align: left;
+  animation: brain-toast-in 0.22s ease;
+}
+.brain-toast:hover { background: var(--bg-hover); }
+.brain-toast-mark {
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+}
+.brain-toast-txt { display: flex; flex-direction: column; gap: 1px; }
+.brain-toast-txt strong { font-size: 12.5px; color: var(--text-0); }
+.brain-toast-txt span { font-size: 11px; color: var(--text-2); }
+@keyframes brain-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Thinking indicator */
