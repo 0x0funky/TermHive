@@ -17,6 +17,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import * as runtime from './runtime.js';
 import * as storage from '../storage.js';
 import { hookEventToStatus } from '../hook-config.js';
+import { cleanStaleCodexMcp } from '../mcp-config.js';
 import { Orchestrator } from './orchestrator.js';
 import { hookEvents } from './hook-events.js';
 import {
@@ -122,6 +123,16 @@ const orchestrator = new Orchestrator(broadcastBrainEvent);
 /** Announce an orchestrator→agent dispatch so the web server can log it. */
 function emitAgentDispatch(d: AgentDispatch) {
   broadcast({ kind: 'event', event: 'agent:dispatch', payload: d });
+}
+
+// One-time cleanup: drop stale PTY-era Codex MCP entries from the global
+// ~/.codex/config.toml — Codex agents now load MCP via codex app-server.
+{
+  const removed = cleanStaleCodexMcp();
+  if (removed > 0) {
+    console.log(`[daemon] cleaned ${removed} stale Codex MCP `
+      + `entr${removed === 1 ? 'y' : 'ies'} from ~/.codex/config.toml`);
+  }
 }
 
 // ─────────────────────────── Terminal streaming ───────────────────────────

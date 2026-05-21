@@ -154,6 +154,41 @@ export function removeCodexMcpConfig(agentId: string): void {
   fs.writeFileSync(configPath, cleaned + (cleaned.length > 0 ? '\n' : ''), 'utf-8');
 }
 
+/**
+ * Remove every Termhive-managed `[mcp_servers.termhive_*]` section from the
+ * global ~/.codex/config.toml.
+ *
+ * v2.2: Codex agents moved to `codex app-server`, which loads its MCP servers
+ * from this global file. The PTY era left per-agent `termhive_*` entries here;
+ * they no longer correspond to anything and just produce startup-failure
+ * noise. This is a one-time cleanup — only the `termhive_`-prefixed sections
+ * (which Termhive itself wrote) are touched; the user's own config is left
+ * exactly as-is. Returns the number of sections removed.
+ */
+export function cleanStaleCodexMcp(): number {
+  const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+  if (!fs.existsSync(configPath)) return 0;
+
+  const before = fs.readFileSync(configPath, 'utf-8');
+  const count = (before.match(/\[mcp_servers\.termhive_/g) || []).length;
+  if (count === 0) return 0;
+
+  let out = before
+    // each [mcp_servers.termhive_*] section, up to the next section or EOF
+    .replace(/(?:^|\n)\[mcp_servers\.termhive_[^\]\n]*\][\s\S]*?(?=\n\[|\n*$)/g, '\n')
+    // the now-orphaned managed-section header comment
+    .replace(/\n*#[^\n]*Termhive MCP servers[^\n]*\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd();
+  out = out.length > 0 ? out + '\n' : '';
+
+  // Safety: never blank out a file that had real content.
+  if (out.trim() === '' && before.trim() !== '') return 0;
+
+  fs.writeFileSync(configPath, out, 'utf-8');
+  return count;
+}
+
 // --- TOML helpers (hand-rolled; keep scope minimal to avoid adding @iarna/toml) ---
 
 function tomlString(s: string): string {
