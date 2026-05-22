@@ -311,9 +311,7 @@ function BrainRow({ m }: { m: BrainMessage }) {
           <div className="cmd-avatar"><Ic.logo size={11} /></div>
           <div
             className="cmd-bubble cmd-md"
-            dangerouslySetInnerHTML={{
-              __html: renderMd(m.text.replace(/\s*🔊[^\n]*\s*$/, '').trim()),
-            }}
+            dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}
           />
         </div>
       );

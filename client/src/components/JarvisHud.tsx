@@ -50,7 +50,7 @@ function speakReply(text: string) {
     const sentences = clean.split(/(?<=[。.!?！?])\s*/).filter((s) => s.trim());
     spoken = sentences.slice(0, 2).join('') || clean;
   }
-  spoken = spoken.slice(0, 260).trim();
+  spoken = spoken.slice(0, 500).trim();
   if (!spoken) return;
   const u = new SpeechSynthesisUtterance(spoken);
   u.lang = 'zh-TW';
@@ -80,8 +80,7 @@ export default function JarvisHud({
   const [voiceOut, setVoiceOut] = useState(
     () => localStorage.getItem('termhive:voice-out') === '1',
   );
-  // Show the reply without the trailing 🔊 spoken-summary line.
-  const reply = (lastReply?.text || '').replace(/\s*🔊[^\n]*\s*$/, '').trim();
+  const reply = (lastReply?.text || '').trim();
   const speech = useSpeechInput((t) => setInput(t));
   const inputRef = useRef<HTMLInputElement>(null);
   const voiceOutRef = useRef(voiceOut);

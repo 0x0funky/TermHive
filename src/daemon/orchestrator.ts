@@ -41,10 +41,12 @@ const AGENTS_MD_PATH = path.join(BRAIN_DIR, 'AGENTS.md');
  * existing conversations has to ride on the turn itself.
  */
 const TURN_SUFFIX =
-  '\n\n---\n[System reminder] End your reply with a final line in exactly ' +
-  'this form:\n🔊 <one sentence>\n— one short, plain, conversational ' +
-  'spoken-summary sentence: the single key takeaway (a finding, a risk, a ' +
-  'decision needed), no markdown, no file paths. Only this line is read aloud.';
+  '\n\n---\n[System reminder] End your reply with a final line starting ' +
+  'with 🔊 — a spoken summary of 2 to 4 full sentences that conveys the ' +
+  'substance: what was done, the current state, and what is needed next. ' +
+  'Brief a colleague — informative and specific, not a one-line platitude. ' +
+  'Plain spoken language, all on a single line, no markdown, no file paths. ' +
+  'This line is read aloud.';
 
 /** The brain's persona + operating rules — loaded by Codex as AGENTS.md. */
 const AGENTS_MD = `# The Keeper — Termhive Orchestrator Brain
@@ -98,12 +100,12 @@ accurate, and proactive about what needs the user's attention.
 6. Synthesize. Don't dump raw tool output — give a short, clear summary.
    Surface blockers and anything that needs a decision from the user.
 7. Be concise. A few sentences or a short list — the details live on screen.
-8. **End every reply with a spoken-summary line, exactly in this form:**
-   \`🔊 <one sentence>\` — one short, plain, conversational sentence: the
-   single most important thing the user needs to hear (a key finding, a risk,
-   a decision they must make), never process narration. No markdown, no file
-   paths. Only this line is read aloud. Example:
-   \`🔊 ardi 其實是錢包與質押專案、不是影片編輯器,而且有腳本會把 ETH 送到寫死地址,要小心。\`
+8. **End every reply with a spoken summary line starting with 🔊** — 2 to 4
+   full sentences that convey the substance: what was done, the current
+   state, and what is needed next. Brief a colleague — informative and
+   specific, not a one-line platitude. Plain spoken language, all on a single
+   line, no markdown, no file paths. This line is read aloud. Example:
+   \`🔊 兩個 agent 都寫好了協作測試計畫:Claude 偏流程,涵蓋訊息傳遞、shared content 與 wiki 測試;Codex 偏執行面,用 progress.md 追蹤 Done/Blocked。目前兩邊都沒有 blocker,等你指定下一步。\`
 
 ## Boundaries (Phase 1)
 
