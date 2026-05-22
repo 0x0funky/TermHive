@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import AgentGrid, { type GridLayout } from './components/AgentGrid';
 import SharedContentView from './components/SharedContent';
@@ -7,6 +7,7 @@ import ProjectWiki from './components/ProjectWiki';
 import MessagesPanel from './components/MessagesPanel';
 import CommandPalette from './components/CommandPalette';
 import CommandPanel from './components/CommandPanel';
+import NotificationCenter from './components/NotificationCenter';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import Ic, { MOD } from './components/Icons';
@@ -42,6 +43,7 @@ export default function App() {
   const [brainToast, setBrainToast] = useState(false);
   const [brainWorking, setBrainWorking] = useState(false);
   const [quickCmd, setQuickCmd] = useState('');
+  const [notifSeen, setNotifSeen] = useState<Set<string>>(new Set());
   const commandOpenRef = useRef(commandOpen);
   commandOpenRef.current = commandOpen;
   const brainBusyRef = useRef(false);
@@ -181,6 +183,29 @@ export default function App() {
   const stoppedCount = projectAgents.filter((a) => a.status === 'stopped').length;
   // "alive" = process exists (running / awaiting / idle) — used for Stop-all gating
   const aliveCount = runningCount + awaitingCount + idleCount;
+
+  // Notification center — every agent across all projects that needs you now.
+  const awaitingNotifs = useMemo(() => {
+    const out: { agentId: string; agentName: string; projectId: string; projectName: string }[] = [];
+    for (const p of projects) {
+      for (const a of agents.get(p.id) || []) {
+        if (a.status === 'awaiting_input') {
+          out.push({ agentId: a.id, agentName: a.name, projectId: p.id, projectName: p.name });
+        }
+      }
+    }
+    return out;
+  }, [projects, agents]);
+  const notifUnread = awaitingNotifs.filter((n) => !notifSeen.has(n.agentId)).length;
+
+  // Drop seen ids whose agent no longer needs you — so it re-badges next time.
+  useEffect(() => {
+    const ids = new Set(awaitingNotifs.map((n) => n.agentId));
+    setNotifSeen((prev) => {
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [awaitingNotifs]);
 
   // Keyboard shortcuts: ⌘K/Ctrl+K (palette), ⌘1–5 (focus agent)
   // `capture: true` fires in the capture phase so it preempts xterm's textarea
@@ -376,6 +401,12 @@ export default function App() {
             )}
             <kbd>{MOD}J</kbd>
           </div>
+          <NotificationCenter
+            notifs={awaitingNotifs}
+            unread={notifUnread}
+            onOpen={() => setNotifSeen(new Set(awaitingNotifs.map((n) => n.agentId)))}
+            onSelect={handleSelectAgent}
+          />
           <div className="layout-seg" role="tablist" aria-label="Layout">
             {LAYOUT_ICONS.map(({ v, Icon, title }) => (
               <button
