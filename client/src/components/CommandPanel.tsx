@@ -80,7 +80,10 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const speech = useSpeechInput((text) => setInput(text));
+  const speech = useSpeechInput((text, final) => {
+    setInput(text);
+    if (final && text.trim()) send(text);
+  });
 
   // Keep the active conversation id reachable from the (long-lived) ws handler.
   const currentIdRef = useRef(currentId);
@@ -144,8 +147,8 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
     return true;
   };
 
-  const send = () => {
-    const text = input.trim();
+  const send = (textArg?: string) => {
+    const text = (textArg ?? input).trim();
     if (!text || status === 'thinking') return;
     if (wsSend({ type: 'brain:send', message: text })) {
       setInput('');
@@ -284,7 +287,7 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
             )}
             <button
               className="cmd-send"
-              onClick={send}
+              onClick={() => send()}
               disabled={!input.trim() || status === 'thinking'}
               title="Send"
             >

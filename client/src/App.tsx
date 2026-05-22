@@ -14,6 +14,7 @@ import CreateAgentModal from './components/CreateAgentModal';
 import Ic, { MOD } from './components/Icons';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSpeechInput } from './hooks/useSpeechInput';
+import { useWakeWord } from './hooks/useWakeWord';
 import logoDark from './assets/logo_dark_sm.jpg';
 import logoLight from './assets/logo_light_sm.jpg';
 import * as api from './api';
@@ -44,6 +45,9 @@ export default function App() {
   const [brainWorking, setBrainWorking] = useState(false);
   const [brainReply, setBrainReply] = useState<{ text: string; ts: number } | null>(null);
   const [quickCmd, setQuickCmd] = useState('');
+  const [wakeEnabled, setWakeEnabled] = useState(
+    () => localStorage.getItem('termhive:wake') === '1',
+  );
   const [notifSeen, setNotifSeen] = useState<Set<string>>(new Set());
   const commandOpenRef = useRef(commandOpen);
   commandOpenRef.current = commandOpen;
@@ -326,19 +330,33 @@ export default function App() {
     await loadAgents(pid);
   };
 
-  // Voice input for the header quick-command box — speak instead of type.
-  const quickSpeech = useSpeechInput((text) => setQuickCmd(text));
-
   // Fire a one-off command at the orchestrator brain straight from the header,
   // without opening the Command drawer.
-  const fireQuickCmd = () => {
-    const text = quickCmd.trim();
+  const fireQuickCmd = (textArg?: string) => {
+    const text = (textArg ?? quickCmd).trim();
     if (!text || brainWorking) return;
     send({ type: 'brain:send', message: text });
     setQuickCmd('');
     brainBusyRef.current = true;
     setBrainWorking(true);
   };
+
+  // Voice input for the header quick-command box — speak, and on a final
+  // result fire it automatically (no manual send).
+  const quickSpeech = useSpeechInput((text, final) => {
+    setQuickCmd(text);
+    if (final && text.trim()) fireQuickCmd(text);
+  });
+
+  // Always-on wake word — "Hey Queen, <command>" drives the brain hands-free.
+  const wake = useWakeWord({
+    enabled: wakeEnabled,
+    onWake: () => { /* armed — the Jarvis orb shows the listening cue */ },
+    onCommand: (text) => fireQuickCmd(text),
+  });
+  useEffect(() => {
+    localStorage.setItem('termhive:wake', wakeEnabled ? '1' : '0');
+  }, [wakeEnabled]);
 
   const logoImg = theme === 'light' ? logoLight : logoDark;
 
@@ -617,6 +635,12 @@ export default function App() {
           send={send}
           working={brainWorking}
           lastReply={brainReply}
+          wake={{
+            enabled: wakeEnabled,
+            supported: wake.supported,
+            armed: wake.armed,
+            onToggle: () => setWakeEnabled((v) => !v),
+          }}
           awaiting={awaitingNotifs}
           running={globalCounts.running}
           idle={globalCounts.idle}

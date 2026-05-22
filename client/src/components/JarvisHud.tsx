@@ -77,6 +77,7 @@ interface Props {
   /** Brain state, fed from App (whose ws.onmessage is the reliable sink). */
   working: boolean;
   lastReply: { text: string; ts: number } | null;
+  wake: { enabled: boolean; supported: boolean; armed: boolean; onToggle: () => void };
   awaiting: AgentNotif[];
   running: number;
   idle: number;
@@ -85,7 +86,7 @@ interface Props {
 }
 
 export default function JarvisHud({
-  send, working, lastReply, awaiting, running, idle, onSelectAgent, onOpenFull,
+  send, working, lastReply, wake, awaiting, running, idle, onSelectAgent, onOpenFull,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -93,7 +94,19 @@ export default function JarvisHud({
     () => localStorage.getItem('termhive:voice-out') === '1',
   );
   const reply = (lastReply?.text || '').trim();
-  const speech = useSpeechInput((t) => setInput(t));
+
+  const submit = (textArg?: string) => {
+    const t = (textArg ?? input).trim();
+    if (!t) return;
+    send({ type: 'brain:send', message: t });
+    setInput('');
+  };
+
+  // Voice input — fill the box, and on a final result send automatically.
+  const speech = useSpeechInput((t, final) => {
+    setInput(t);
+    if (final && t.trim()) submit(t);
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const voiceOutRef = useRef(voiceOut);
   voiceOutRef.current = voiceOut;
@@ -117,14 +130,9 @@ export default function JarvisHud({
     if (expanded) setTimeout(() => inputRef.current?.focus(), 80);
   }, [expanded]);
 
-  const state = working ? 'thinking' : speech.listening ? 'listening' : 'idle';
-
-  const submit = () => {
-    const t = input.trim();
-    if (!t) return;
-    send({ type: 'brain:send', message: t });
-    setInput('');
-  };
+  const state = working ? 'thinking'
+    : (speech.listening || wake.armed) ? 'listening'
+    : 'idle';
 
   return (
     <div className="jv">
@@ -140,6 +148,15 @@ export default function JarvisHud({
             >
               <Ic.volume size={13} />
             </button>
+            {wake.supported && (
+              <button
+                className={'jv-x' + (wake.enabled ? ' on' : '')}
+                onClick={wake.onToggle}
+                title={wake.enabled ? 'Wake word on — say “Hey Queen”' : 'Wake word off'}
+              >
+                <Ic.mic size={13} />
+              </button>
+            )}
             <button className="jv-x" onClick={onOpenFull} title="Open full conversation">
               <Ic.message size={12} />
             </button>
@@ -204,7 +221,7 @@ export default function JarvisHud({
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
               placeholder="Speak or type to The Keeper…"
             />
-            <button className="jv-send" onClick={submit} disabled={!input.trim()} title="Send">
+            <button className="jv-send" onClick={() => submit()} disabled={!input.trim()} title="Send">
               <Ic.send size={13} />
             </button>
           </div>
