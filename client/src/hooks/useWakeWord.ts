@@ -8,11 +8,14 @@
  * Chrome / Edge only, secure context only, and the tab should stay in the
  * foreground (browsers throttle background-tab audio). Chrome ends continuous
  * recognition periodically — it is restarted automatically.
+ *
+ * Everything is logged under the `[wake]` prefix — open the browser console
+ * (F12 → Console) to see what it hears and whether the phrase matched.
  */
 
 import { useEffect, useRef, useState } from 'react';
 
-const WAKE_TERMS = ['hey queen', 'queen', '皇后', '皇後'];
+const WAKE_TERMS = ['hey queen', 'queen', 'hey 皇后', '嘿皇后', '皇后', '皇後'];
 const ARM_TIMEOUT = 9000; // disarm if no command follows the wake phrase
 
 interface WakeOptions {
@@ -23,6 +26,7 @@ interface WakeOptions {
 
 export function useWakeWord({ enabled, onWake, onCommand }: WakeOptions) {
   const [armed, setArmed] = useState(false);
+  const [listening, setListening] = useState(false);
   const armedRef = useRef(false);
   const cbRef = useRef({ onWake, onCommand });
   cbRef.current = { onWake, onCommand };
@@ -37,7 +41,12 @@ export function useWakeWord({ enabled, onWake, onCommand }: WakeOptions) {
 
   useEffect(() => {
     const Rec = SR as { new (): SpeechRecognitionLike } | undefined;
+    const secure = typeof window !== 'undefined' ? window.isSecureContext : false;
+    console.log('[wake] effect — enabled:', enabled, 'supported:', !!Rec, 'secureContext:', secure);
     if (!Rec || !enabled) return;
+    if (!secure) {
+      console.warn('[wake] not a secure context — open Termhive via http://localhost, not an IP');
+    }
     let stopped = false;
     let rec: SpeechRecognitionLike | null = null;
     let restartTimer: ReturnType<typeof setTimeout> | null = null;
@@ -48,13 +57,15 @@ export function useWakeWord({ enabled, onWake, onCommand }: WakeOptions) {
 
     const handleResult = (e: SpeechResultEvent) => {
       const last = e.results?.[e.results.length - 1];
-      if (!last || !last.isFinal) return;
+      if (!last) return;
       const raw = String(last[0]?.transcript || '').trim();
-      if (!raw) return;
+      console.log(`[wake] heard ${last.isFinal ? 'FINAL' : 'interim'}:`, JSON.stringify(raw));
+      if (!last.isFinal || !raw) return;
 
       if (armedRef.current) {
         clearArmTimer();
         setArmedState(false);
+        console.log('[wake] ✦ command (was armed):', raw);
         cbRef.current.onCommand(raw);
         return;
       }
@@ -65,15 +76,24 @@ export function useWakeWord({ enabled, onWake, onCommand }: WakeOptions) {
         const i = lc.indexOf(term);
         if (i >= 0 && (hit < 0 || i < hit)) { hit = i; hitLen = term.length; }
       }
-      if (hit < 0) return;
+      if (hit < 0) {
+        console.log('[wake] · no wake word in that — ignored');
+        return;
+      }
       const after = raw.slice(hit + hitLen).replace(/^[\s,，。、:：!！?？]+/, '').trim();
       if (after) {
+        console.log('[wake] ✦ wake word + command in one breath:', after);
         cbRef.current.onCommand(after);
       } else {
+        console.log('[wake] ✦ wake word matched — armed, waiting for the command');
         setArmedState(true);
         cbRef.current.onWake();
         clearArmTimer();
-        armTimer = setTimeout(() => { armTimer = null; setArmedState(false); }, ARM_TIMEOUT);
+        armTimer = setTimeout(() => {
+          armTimer = null;
+          console.log('[wake] arm timed out — disarmed');
+          setArmedState(false);
+        }, ARM_TIMEOUT);
       }
     };
 
@@ -84,33 +104,52 @@ export function useWakeWord({ enabled, onWake, onCommand }: WakeOptions) {
 
     const start = () => {
       if (stopped) return;
-      const r = new Rec();
+      let r: SpeechRecognitionLike;
+      try { r = new Rec(); }
+      catch (err) { console.warn('[wake] new SpeechRecognition() threw:', err); return; }
       r.lang = 'zh-TW';
       r.continuous = true;
-      r.interimResults = false;
+      r.interimResults = true;
+      r.onstart = () => { console.log('[wake] ▶ recognition started — listening'); setListening(true); };
+      r.onspeechstart = () => console.log('[wake] · speech detected');
       r.onresult = handleResult;
       r.onerror = (ev: { error?: string }) => {
         const code = String(ev?.error || '');
-        if (code === 'not-allowed' || code === 'service-not-allowed') stopped = true;
+        if (code === 'no-speech' || code === 'aborted') {
+          console.log('[wake] (', code, '— normal, will restart)');
+        } else {
+          console.warn('[wake] error:', code);
+        }
+        if (code === 'not-allowed' || code === 'service-not-allowed') {
+          stopped = true;
+          console.warn('[wake] microphone blocked — toggle wake word off and on after allowing mic access');
+        }
       };
-      r.onend = () => { rec = null; scheduleRestart(); };
+      r.onend = () => {
+        rec = null;
+        setListening(false);
+        if (!stopped) { console.log('[wake] ■ ended — restarting in 600ms'); scheduleRestart(); }
+      };
       rec = r;
-      try { r.start(); } catch { rec = null; scheduleRestart(); }
+      try { console.log('[wake] starting recognition…'); r.start(); }
+      catch (err) { console.warn('[wake] start() threw:', err); rec = null; scheduleRestart(); }
     };
 
     start();
 
     return () => {
+      console.log('[wake] cleanup — stopping');
       stopped = true;
       if (restartTimer) clearTimeout(restartTimer);
       clearArmTimer();
       setArmedState(false);
+      setListening(false);
       try { rec?.abort(); } catch { /* ignore */ }
       rec = null;
     };
   }, [SR, enabled]);
 
-  return { supported, armed };
+  return { supported, armed, listening };
 }
 
 // Minimal structural types for the Web Speech API (not in lib.dom for webkit).
@@ -121,6 +160,8 @@ interface SpeechRecognitionLike {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  onstart: () => void;
+  onspeechstart: () => void;
   onresult: (e: SpeechResultEvent) => void;
   onerror: (e: { error?: string }) => void;
   onend: () => void;
