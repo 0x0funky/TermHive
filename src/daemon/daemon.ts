@@ -25,6 +25,7 @@ import {
   askAgentDispatch,
   startAgentDispatch,
   readWiki,
+  writeWiki,
   projectOverview,
   readShared,
   broadcastDispatch,
@@ -379,6 +380,25 @@ async function handleHttp(httpReq: IncomingMessage, res: ServerResponse) {
       sendJson(res, 200, projectOverview(project));
     } else {
       sendJson(res, 200, readWiki(project, query.get('page') || undefined));
+    }
+    return;
+  }
+
+  // POST /org/update-wiki — the Keeper writes a project wiki page
+  if (httpReq.method === 'POST' && route === '/org/update-wiki') {
+    try {
+      const body = JSON.parse((await readBody(httpReq)) || '{}');
+      const result = writeWiki(
+        String(body.project || ''),
+        String(body.page || ''),
+        String(body.content ?? ''),
+      );
+      if (result.ok) broadcast({ kind: 'event', event: 'org:changed' });
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false, error: err instanceof Error ? err.message : String(err),
+      });
     }
     return;
   }
