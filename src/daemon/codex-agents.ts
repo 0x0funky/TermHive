@@ -14,7 +14,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import type { Agent } from '../types.js';
 import type { CodexItem } from './protocol.js';
-import { updateAgent } from '../storage.js';
+import { updateAgent, getProjectData, SHARED_CONTENT_DIR, WIKI_DIR } from '../storage.js';
 import { CodexAppServer } from './codex-server.js';
 
 type StatusFn = (agentId: string, status: string) => void;
@@ -32,11 +32,56 @@ interface CodexSession {
 const MAX_ITEMS = 500;
 
 /**
- * Per-thread config override (merged over ~/.codex/config.toml). `detailed`
- * reasoning summaries make codex stream its thinking — without this the
- * reasoning items arrive empty.
+ * Build a Codex agent's Termhive environment: the `developerInstructions`
+ * (so it knows about its project wiki, shared content, and teammates) and the
+ * per-thread `config` override (detailed reasoning summaries + writable roots
+ * so the agent can actually write the wiki / shared dirs, which sit outside
+ * its workspace).
  */
-const THREAD_CONFIG = { model_reasoning_summary: 'detailed' };
+function buildAgentEnv(agent: Agent): { developerInstructions: string; config: Record<string, unknown> } {
+  const data = getProjectData(agent.projectId);
+  const projectName = data?.project.name || 'this project';
+  const wikiPath = path.join(WIKI_DIR, projectName);
+  const sharedPath = path.join(SHARED_CONTENT_DIR, projectName);
+  try { fs.mkdirSync(sharedPath, { recursive: true }); } catch { /* best-effort */ }
+
+  const teammates = (data?.agents || []).filter((a) => a.id !== agent.id);
+  const teamLines = teammates.length
+    ? teammates.map((t) => `- ${t.name}${t.role ? ` (${t.role})` : ''} — ${t.cli}`).join('\n')
+    : '- (no teammates yet)';
+
+  const developerInstructions = [
+    '# Termhive — your environment',
+    '',
+    `You are **${agent.name}**, an agent on the **${projectName}** team inside`,
+    'Termhive, a dashboard that manages a team of coding agents.',
+    '',
+    '## Project wiki — the team knowledge base',
+    `Path: ${wikiPath}`,
+    "- The project's living knowledge: overview, progress, decisions.",
+    '- Read `_schema.md` there for the wiki conventions.',
+    '- When asked to update the wiki, write to that directory following the schema.',
+    '- Do not auto-update the wiki while coding — only when explicitly asked.',
+    '',
+    '## Shared content',
+    `Path: ${sharedPath}`,
+    '- Files the team and the user exchange. Read for shared context; write here',
+    '  to share docs or notes with the team.',
+    '',
+    '## Your team',
+    teamLines,
+    '',
+    'You cannot message teammates directly. Coordination goes through the Keeper',
+    '(the Termhive orchestrator) — if you need something from a teammate, say so',
+    'in your reply and the Keeper or the user will relay it.',
+  ].join('\n');
+
+  const config: Record<string, unknown> = {
+    model_reasoning_summary: 'detailed',
+    sandbox_workspace_write: { writable_roots: [wikiPath, sharedPath] },
+  };
+  return { developerInstructions, config };
+}
 
 const sessions = new Map<string, CodexSession>();   // agentId → session
 const threadToAgent = new Map<string, string>();    // threadId → agentId
@@ -413,28 +458,28 @@ export async function startAgent(agent: Agent, statusFn: StatusFn): Promise<bool
   }
 
   const cwd = expandHome(agent.cwd);
+  const env = buildAgentEnv(agent);
+  const baseParams = {
+    cwd,
+    sandbox: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    config: env.config,
+    developerInstructions: env.developerInstructions,
+  };
   let threadId = '';
   let resumed = false;
   try {
     if (agent.codexThreadId) {
-      const r = await cs.request('thread/resume', {
-        threadId: agent.codexThreadId, cwd, config: THREAD_CONFIG,
-      });
+      const r = await cs.request('thread/resume', { threadId: agent.codexThreadId, ...baseParams });
       threadId = r?.thread?.id || agent.codexThreadId;
       resumed = true;
     } else {
-      const r = await cs.request('thread/start', {
-        cwd, sandbox: 'workspace-write', approvalPolicy: 'on-failure',
-        config: THREAD_CONFIG,
-      });
+      const r = await cs.request('thread/start', baseParams);
       threadId = r?.thread?.id || '';
     }
   } catch {
     try {
-      const r = await cs.request('thread/start', {
-        cwd, sandbox: 'workspace-write', approvalPolicy: 'on-failure',
-        config: THREAD_CONFIG,
-      });
+      const r = await cs.request('thread/start', baseParams);
       threadId = r?.thread?.id || '';
     } catch (err) {
       console.error('[codex-agents] thread/start failed:', err);
@@ -493,9 +538,11 @@ export async function newThread(agentId: string): Promise<boolean> {
   const s = sessions.get(agentId);
   if (!s || !server) return false;
   try {
+    const env = buildAgentEnv(s.agent);
     const r = await server.request('thread/start', {
       cwd: expandHome(s.agent.cwd),
-      sandbox: 'workspace-write', approvalPolicy: 'on-failure', config: THREAD_CONFIG,
+      sandbox: 'workspace-write', approvalPolicy: 'on-failure',
+      config: env.config, developerInstructions: env.developerInstructions,
     });
     const newId: string = r?.thread?.id || '';
     if (!newId) return false;
