@@ -52,14 +52,24 @@ function speakReply(text: string) {
   }
   spoken = spoken.slice(0, 500).trim();
   if (!spoken) return;
+  const synth = window.speechSynthesis;
+  const zh = synth.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
+  // When the synth is idle the audio device sleeps; waking it clips the start
+  // of the next utterance. Queue a short, quiet warm-up to take that hit, so
+  // the real line is heard from its first word.
+  if (!synth.speaking && !synth.pending) {
+    const warm = new SpeechSynthesisUtterance('嗯。嗯。嗯。');
+    warm.lang = 'zh-TW';
+    warm.volume = 0.1;
+    if (zh) warm.voice = zh;
+    synth.speak(warm);
+  }
   const u = new SpeechSynthesisUtterance(spoken);
   u.lang = 'zh-TW';
-  const zh = window.speechSynthesis.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
   if (zh) u.voice = zh;
-  // No cancel() — utterances queue, so the Keeper's step-by-step narration
-  // and its closing summary are spoken in order. stopSpeaking() (new turn /
-  // voice off) is the only thing that clears the queue.
-  window.speechSynthesis.speak(u);
+  // No cancel() — utterances queue, so the step-by-step narration and the
+  // closing summary are spoken in order. stopSpeaking() clears the queue.
+  synth.speak(u);
 }
 
 interface Props {
