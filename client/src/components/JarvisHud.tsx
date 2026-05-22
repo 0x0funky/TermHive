@@ -24,9 +24,10 @@ function stopSpeaking() {
 }
 
 /**
- * Speak a short, spoken-friendly version of a Keeper reply — the Keeper opens
- * each reply with a plain summary sentence (see its persona), so we strip
- * markdown and speak just that first sentence. The screen still shows it all.
+ * Speak a short, spoken-friendly version of a Keeper reply. We strip markdown
+ * and speak the first two sentences: the Keeper often opens with a process
+ * line ("agents started and reported…") and puts the real conclusion in the
+ * second sentence, so one sentence isn't enough. The screen shows it all.
  */
 function speakReply(text: string) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -39,7 +40,8 @@ function speakReply(text: string) {
     .replace(/\s+/g, ' ')
     .trim();
   if (!clean) return;
-  const spoken = (clean.split(/(?<=[。.!?！?])\s/)[0] || clean).slice(0, 220);
+  const sentences = clean.split(/(?<=[。.!?！?])\s*/).filter((s) => s.trim());
+  const spoken = (sentences.slice(0, 2).join('') || clean).slice(0, 240);
   const u = new SpeechSynthesisUtterance(spoken);
   u.lang = 'zh-TW';
   const zh = window.speechSynthesis.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
