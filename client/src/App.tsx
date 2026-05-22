@@ -368,7 +368,7 @@ export default function App() {
             {quickSpeech.supported && (
               <button
                 className={'cmd-quick-mic' + (quickSpeech.listening ? ' on' : '')}
-                title={quickSpeech.listening ? 'Stop listening' : 'Voice input'}
+                title={quickSpeech.error || (quickSpeech.listening ? 'Stop listening' : 'Voice input')}
                 onClick={quickSpeech.toggle}
               >
                 <Ic.mic size={13} />

@@ -277,7 +277,7 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
               <button
                 className={'cmd-mic' + (speech.listening ? ' on' : '')}
                 onClick={speech.toggle}
-                title={speech.listening ? 'Stop listening' : 'Voice input'}
+                title={speech.error || (speech.listening ? 'Stop listening' : 'Voice input')}
               >
                 <Ic.mic size={15} />
               </button>
