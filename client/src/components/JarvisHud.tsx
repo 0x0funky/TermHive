@@ -13,6 +13,35 @@ import Ic from './Icons';
 import { useSpeechInput } from '../hooks/useSpeechInput';
 import type { AgentNotif } from './NotificationCenter';
 
+function stopSpeaking() {
+  try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+}
+
+/**
+ * Speak a short, spoken-friendly version of a Keeper reply — the Keeper opens
+ * each reply with a plain summary sentence (see its persona), so we strip
+ * markdown and speak just that first sentence. The screen still shows it all.
+ */
+function speakReply(text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const clean = text
+    .replace(/```[\s\S]*?```/g, ' ')            // drop code blocks
+    .replace(/`([^`]+)`/g, '$1')                // inline code → plain
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')    // links → label
+    .replace(/[*_#>]/g, '')                     // markdown symbols
+    .replace(/^\s*[-•]\s*/gm, '')               // list bullets
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return;
+  const spoken = (clean.split(/(?<=[。.!?！?])\s/)[0] || clean).slice(0, 220);
+  const u = new SpeechSynthesisUtterance(spoken);
+  u.lang = 'zh-TW';
+  const zh = window.speechSynthesis.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
+  if (zh) u.voice = zh;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
 interface Props {
   wsRef: React.RefObject<WebSocket | null>;
   send: (msg: object) => void;
@@ -30,8 +59,18 @@ export default function JarvisHud({
   const [input, setInput] = useState('');
   const [working, setWorking] = useState(false);
   const [reply, setReply] = useState('');
+  const [voiceOut, setVoiceOut] = useState(
+    () => localStorage.getItem('termhive:voice-out') === '1',
+  );
   const speech = useSpeechInput((t) => setInput(t));
   const inputRef = useRef<HTMLInputElement>(null);
+  const voiceOutRef = useRef(voiceOut);
+  voiceOutRef.current = voiceOut;
+
+  useEffect(() => {
+    localStorage.setItem('termhive:voice-out', voiceOut ? '1' : '0');
+    if (!voiceOut) stopSpeaking();
+  }, [voiceOut]);
 
   // Track the Keeper's live state — working + latest reply.
   useEffect(() => {
@@ -42,9 +81,13 @@ export default function JarvisHud({
         const msg = JSON.parse(ev.data);
         if (msg.type !== 'brain:event') return;
         const p = msg.payload;
-        if (p?.kind === 'status') setWorking(p.status === 'thinking');
-        else if (p?.kind === 'append' && p.message?.role === 'assistant') {
-          setReply(String(p.message.text || ''));
+        if (p?.kind === 'status') {
+          setWorking(p.status === 'thinking');
+          if (p.status === 'thinking') stopSpeaking();  // new turn → stop talking
+        } else if (p?.kind === 'append' && p.message?.role === 'assistant') {
+          const replyText = String(p.message.text || '');
+          setReply(replyText);
+          if (voiceOutRef.current) speakReply(replyText);
         }
       } catch { /* ignore */ }
     };
@@ -73,6 +116,13 @@ export default function JarvisHud({
           <div className="jv-panel-h">
             <div className={'jv-mini-orb ' + state}><Ic.logo size={12} /></div>
             <span className="jv-panel-t">The Keeper</span>
+            <button
+              className={'jv-x' + (voiceOut ? ' on' : '')}
+              onClick={() => setVoiceOut((v) => !v)}
+              title={voiceOut ? 'Voice replies: on' : 'Voice replies: off'}
+            >
+              <Ic.volume size={13} />
+            </button>
             <button className="jv-x" onClick={onOpenFull} title="Open full conversation">
               <Ic.message size={12} />
             </button>

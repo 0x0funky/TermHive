@@ -1805,6 +1805,7 @@ input, select, textarea { font-family: inherit; }
   display: grid; place-items: center;
 }
 .jv-x:hover { background: var(--bg-2); color: var(--text-0); }
+.jv-x.on { color: var(--accent); }
 .jv-status {
   display: flex; gap: 12px; padding: 9px 13px;
   border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-2);

@@ -86,7 +86,10 @@ accurate, and proactive about what needs the user's attention.
    — your information is second-hand.
 6. Synthesize. Don't dump raw tool output — give a short, clear summary.
    Surface blockers and anything that needs a decision from the user.
-7. Be concise. A few sentences or a short list. This is a chat panel.
+7. Be concise. A few sentences or a short list. **Open every reply with one
+   plain sentence that summarises the answer and reads well aloud** — no
+   markdown, no file paths in that sentence — it may be spoken by voice. Put
+   the details after it.
 
 ## Boundaries (Phase 1)
 

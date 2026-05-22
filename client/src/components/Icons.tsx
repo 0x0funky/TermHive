@@ -186,6 +186,12 @@ const Ic = {
       <path d="M8 1v5l3 2-3 2v5l-3-5-5 3 5-3-5-3 5 3 3-5z" />
     </svg>
   ),
+  volume: (p: IconProps = {}) => (
+    <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth || 1.5} strokeLinecap="round" strokeLinejoin="round" style={p.style} className={p.className}>
+      <path d="M8.5 3L4.5 6H2v4h2.5l4 3V3Z" />
+      <path d="M11 6.2a3 3 0 010 3.6M13 4.6a6 6 0 010 6.8" />
+    </svg>
+  ),
   bell: (p: IconProps = {}) => (
     <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth || 1.5} strokeLinecap="round" strokeLinejoin="round" style={p.style} className={p.className}>
       <path d="M4 5.3a4 4 0 018 0c0 4.7 2 6 2 6H2s2-1.3 2-6" />
