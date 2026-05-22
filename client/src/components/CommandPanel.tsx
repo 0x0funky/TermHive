@@ -16,6 +16,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import Ic from './Icons';
+import { useSpeechInput } from '../hooks/useSpeechInput';
 
 function renderMd(text: string): string {
   try { return marked.parse(text, { async: false }) as string; }
@@ -79,6 +80,7 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const speech = useSpeechInput((text) => setInput(text));
 
   // Keep the active conversation id reachable from the (long-lived) ws handler.
   const currentIdRef = useRef(currentId);
@@ -271,6 +273,15 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
               placeholder="Ask The Keeper…  (Enter to send, Shift+Enter for a new line)"
               rows={2}
             />
+            {speech.supported && (
+              <button
+                className={'cmd-mic' + (speech.listening ? ' on' : '')}
+                onClick={speech.toggle}
+                title={speech.listening ? 'Stop listening' : 'Voice input'}
+              >
+                <Ic.mic size={15} />
+              </button>
+            )}
             <button
               className="cmd-send"
               onClick={send}

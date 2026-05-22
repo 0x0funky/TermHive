@@ -1692,6 +1692,16 @@ input, select, textarea { font-family: inherit; }
 }
 .cmd-quick-input::placeholder { color: var(--text-3); }
 .cmd-quick > kbd { flex-shrink: 0; }
+.cmd-quick-mic {
+  display: grid; place-items: center; width: 22px; height: 22px;
+  border-radius: 6px; flex-shrink: 0;
+  background: transparent; border: none; cursor: pointer; color: var(--text-3);
+}
+.cmd-quick-mic:hover { background: var(--bg-hover); color: var(--text-1); }
+.cmd-quick-mic.on {
+  color: var(--err); background: var(--err-soft);
+  animation: cmd-pulse 1.2s ease-in-out infinite;
+}
 
 /* Thinking indicator */
 .cmd-thinking {
@@ -1735,6 +1745,16 @@ input, select, textarea { font-family: inherit; }
 }
 .cmd-send:hover { background: var(--accent-hover); }
 .cmd-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.cmd-mic {
+  width: 34px; height: 34px; flex-shrink: 0;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-2); display: grid; place-items: center; cursor: pointer;
+}
+.cmd-mic:hover { background: var(--bg-3); color: var(--text-0); }
+.cmd-mic.on {
+  color: var(--err); border-color: var(--err);
+  animation: cmd-pulse 1.2s ease-in-out infinite;
+}
 
 /* Conversation history / switcher */
 .cmd-h .hbtn.active { background: var(--accent-soft); color: var(--accent); }

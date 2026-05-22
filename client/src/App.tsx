@@ -11,6 +11,7 @@ import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import Ic, { MOD } from './components/Icons';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useSpeechInput } from './hooks/useSpeechInput';
 import logoDark from './assets/logo_dark_sm.jpg';
 import logoLight from './assets/logo_light_sm.jpg';
 import * as api from './api';
@@ -288,6 +289,9 @@ export default function App() {
     await loadAgents(pid);
   };
 
+  // Voice input for the header quick-command box — speak instead of type.
+  const quickSpeech = useSpeechInput((text) => setQuickCmd(text));
+
   // Fire a one-off command at the orchestrator brain straight from the header,
   // without opening the Command drawer.
   const fireQuickCmd = () => {
@@ -361,6 +365,15 @@ export default function App() {
               placeholder={brainWorking ? 'The Keeper is working…' : 'Ask The Keeper…'}
               disabled={brainWorking}
             />
+            {quickSpeech.supported && (
+              <button
+                className={'cmd-quick-mic' + (quickSpeech.listening ? ' on' : '')}
+                title={quickSpeech.listening ? 'Stop listening' : 'Voice input'}
+                onClick={quickSpeech.toggle}
+              >
+                <Ic.mic size={13} />
+              </button>
+            )}
             <kbd>{MOD}J</kbd>
           </div>
           <div className="layout-seg" role="tablist" aria-label="Layout">

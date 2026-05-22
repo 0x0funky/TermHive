@@ -186,6 +186,13 @@ const Ic = {
       <path d="M8 1v5l3 2-3 2v5l-3-5-5 3 5-3-5-3 5 3 3-5z" />
     </svg>
   ),
+  mic: (p: IconProps = {}) => (
+    <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth || 1.5} strokeLinecap="round" strokeLinejoin="round" style={p.style} className={p.className}>
+      <rect x="5.8" y="1.6" width="4.4" height="8" rx="2.2" />
+      <path d="M3.6 7.6a4.4 4.4 0 008.8 0" />
+      <path d="M8 12v2.4M5.6 14.4h4.8" />
+    </svg>
+  ),
   // TermHive brand mark — a hive hexagon with a >_ terminal prompt.
   logo: (p: IconProps = {}) => (
     <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth || 1.5} strokeLinecap="round" strokeLinejoin="round" style={p.style} className={p.className}>
