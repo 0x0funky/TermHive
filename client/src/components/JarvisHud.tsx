@@ -43,8 +43,10 @@ function speakReply(text: string) {
 }
 
 interface Props {
-  wsRef: React.RefObject<WebSocket | null>;
   send: (msg: object) => void;
+  /** Brain state, fed from App (whose ws.onmessage is the reliable sink). */
+  working: boolean;
+  lastReply: { text: string; ts: number } | null;
   awaiting: AgentNotif[];
   running: number;
   idle: number;
@@ -53,15 +55,14 @@ interface Props {
 }
 
 export default function JarvisHud({
-  wsRef, send, awaiting, running, idle, onSelectAgent, onOpenFull,
+  send, working, lastReply, awaiting, running, idle, onSelectAgent, onOpenFull,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
-  const [working, setWorking] = useState(false);
-  const [reply, setReply] = useState('');
   const [voiceOut, setVoiceOut] = useState(
     () => localStorage.getItem('termhive:voice-out') === '1',
   );
+  const reply = lastReply?.text || '';
   const speech = useSpeechInput((t) => setInput(t));
   const inputRef = useRef<HTMLInputElement>(null);
   const voiceOutRef = useRef(voiceOut);
@@ -72,28 +73,15 @@ export default function JarvisHud({
     if (!voiceOut) stopSpeaking();
   }, [voiceOut]);
 
-  // Track the Keeper's live state — working + latest reply.
+  // Speak each new Keeper reply when voice replies are on.
   useEffect(() => {
-    const ws = wsRef.current;
-    if (!ws) return;
-    const handler = (ev: MessageEvent) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.type !== 'brain:event') return;
-        const p = msg.payload;
-        if (p?.kind === 'status') {
-          setWorking(p.status === 'thinking');
-          if (p.status === 'thinking') stopSpeaking();  // new turn → stop talking
-        } else if (p?.kind === 'append' && p.message?.role === 'assistant') {
-          const replyText = String(p.message.text || '');
-          setReply(replyText);
-          if (voiceOutRef.current) speakReply(replyText);
-        }
-      } catch { /* ignore */ }
-    };
-    ws.addEventListener('message', handler);
-    return () => ws.removeEventListener('message', handler);
-  }, [wsRef]);
+    if (lastReply && voiceOutRef.current) speakReply(lastReply.text);
+  }, [lastReply]);
+
+  // A new turn starting cuts off any in-progress speech.
+  useEffect(() => {
+    if (working) stopSpeaking();
+  }, [working]);
 
   useEffect(() => {
     if (expanded) setTimeout(() => inputRef.current?.focus(), 80);
@@ -106,7 +94,6 @@ export default function JarvisHud({
     if (!t) return;
     send({ type: 'brain:send', message: t });
     setInput('');
-    setReply('');
   };
 
   return (

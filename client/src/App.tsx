@@ -42,6 +42,7 @@ export default function App() {
   // while the Command panel is closed.
   const [brainDone, setBrainDone] = useState(false);
   const [brainWorking, setBrainWorking] = useState(false);
+  const [brainReply, setBrainReply] = useState<{ text: string; ts: number } | null>(null);
   const [quickCmd, setQuickCmd] = useState('');
   const [notifSeen, setNotifSeen] = useState<Set<string>>(new Set());
   const commandOpenRef = useRef(commandOpen);
@@ -114,8 +115,10 @@ export default function App() {
       if (selectedProjectId) loadAgents(selectedProjectId);
     }
     if (msg.type === 'brain:event') {
-      // Detect the orchestrator finishing a task (thinking → idle).
-      const p = (msg as { payload?: { kind?: string; status?: string } }).payload;
+      // The single reliable brain-event sink — ws.onmessage. The Jarvis HUD
+      // reads brain state from here via props (its own listener can't attach
+      // before the socket exists).
+      const p = (msg as { payload?: any }).payload;
       if (p?.kind === 'status') {
         if (p.status === 'thinking') {
           brainBusyRef.current = true;
@@ -125,6 +128,8 @@ export default function App() {
           setBrainWorking(false);
           if (!commandOpenRef.current) setBrainDone(true);
         }
+      } else if (p?.kind === 'append' && p.message?.role === 'assistant') {
+        setBrainReply({ text: String(p.message.text || ''), ts: Date.now() });
       }
     }
     if (msg.type === 'agent:status' && msg.agentId && msg.status) {
@@ -609,8 +614,9 @@ export default function App() {
 
       {!commandOpen && (
         <JarvisHud
-          wsRef={wsRef}
           send={send}
+          working={brainWorking}
+          lastReply={brainReply}
           awaiting={awaitingNotifs}
           running={globalCounts.running}
           idle={globalCounts.idle}
