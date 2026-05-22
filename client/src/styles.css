@@ -1747,6 +1747,109 @@ input, select, textarea { font-family: inherit; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* Jarvis HUD — floating Keeper voice cockpit */
+.jv { position: fixed; bottom: 42px; right: 22px; z-index: 180; }
+
+.jv-orb {
+  position: relative; width: 56px; height: 56px; border-radius: 50%;
+  border: none; padding: 0; cursor: pointer;
+  background: radial-gradient(circle at 50% 38%, var(--bg-3), var(--bg-1));
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.42), 0 0 0 1px var(--border);
+  display: grid; place-items: center; transition: box-shadow 0.18s ease;
+}
+.jv-orb:hover { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--accent); }
+.jv-core { position: relative; z-index: 2; display: grid; place-items: center; color: var(--accent); }
+.jv-orb.idle .jv-core { animation: jv-breathe 3.6s ease-in-out infinite; }
+.jv-orb.thinking { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--accent); }
+.jv-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1.5px solid var(--accent); opacity: 0; pointer-events: none;
+}
+.jv-orb.listening .jv-ring { animation: jv-ring 1.7s ease-out infinite; }
+.jv-orb.listening .jv-ring.jv-ring2 { animation-delay: 0.85s; }
+.jv-orb.thinking .jv-ring {
+  opacity: 1; border-color: transparent; border-top-color: var(--accent);
+  animation: jv-spin 0.85s linear infinite;
+}
+.jv-orb-badge {
+  position: absolute; top: -3px; right: -3px; z-index: 3;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  border-radius: 9px; background: var(--attn); color: #0a0a0a;
+  font-size: 10px; font-weight: 700; line-height: 18px; text-align: center;
+  box-shadow: 0 0 0 2px var(--bg-1);
+}
+@keyframes jv-breathe { 0%, 100% { transform: scale(1); opacity: 0.9; } 50% { transform: scale(1.12); opacity: 1; } }
+@keyframes jv-ring { 0% { transform: scale(0.8); opacity: 0.6; } 100% { transform: scale(1.95); opacity: 0; } }
+@keyframes jv-spin { to { transform: rotate(360deg); } }
+
+.jv-panel {
+  position: absolute; bottom: 68px; right: 0; width: 332px;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
+  overflow: hidden; animation: jv-pop 0.18s ease;
+}
+@keyframes jv-pop { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+.jv-panel-h {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 10px 10px 12px; border-bottom: 1px solid var(--border);
+}
+.jv-mini-orb {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  background: var(--accent-soft); color: var(--accent); display: grid; place-items: center;
+}
+.jv-mini-orb.thinking { animation: jv-breathe 1.4s ease-in-out infinite; }
+.jv-panel-t { flex: 1; font-size: 12.5px; font-weight: 600; color: var(--text-0); }
+.jv-x {
+  width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
+  background: transparent; border: none; cursor: pointer; color: var(--text-3);
+  display: grid; place-items: center;
+}
+.jv-x:hover { background: var(--bg-2); color: var(--text-0); }
+.jv-status {
+  display: flex; gap: 12px; padding: 9px 13px;
+  border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-2);
+}
+.jv-stat { display: flex; align-items: center; gap: 5px; }
+.jv-stat i { width: 6px; height: 6px; border-radius: 50%; }
+.jv-await { padding: 5px; display: flex; flex-direction: column; gap: 2px; max-height: 168px; overflow: auto; }
+.jv-await-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+  border-radius: 7px; background: transparent; border: none; cursor: pointer;
+  text-align: left; width: 100%;
+}
+.jv-await-row:hover { background: var(--bg-2); }
+.jv-await-row .sdot { width: 7px; height: 7px; flex-shrink: 0; }
+.jv-await-t { font-size: 12px; color: var(--text-0); }
+.jv-await-s { font-size: 11px; color: var(--text-3); margin-left: auto; }
+.jv-reply {
+  padding: 9px 13px; border-top: 1px solid var(--border);
+  font-size: 12px; line-height: 1.5; color: var(--text-1);
+  max-height: 140px; overflow: auto;
+}
+.jv-reply-w { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
+.jv-reply-t { white-space: pre-wrap; word-break: break-word; }
+.jv-compose {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 10px; border-top: 1px solid var(--border); background: var(--bg-1);
+}
+.jv-mic, .jv-send {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: grid; place-items: center; cursor: pointer;
+}
+.jv-mic { background: var(--bg-2); border: 1px solid var(--border); color: var(--text-2); }
+.jv-mic:hover { background: var(--bg-3); color: var(--text-0); }
+.jv-mic.on { color: var(--err); border-color: var(--err); animation: cmd-pulse 1.2s ease-in-out infinite; }
+.jv-send { background: var(--accent); border: none; color: #0a0a0a; }
+.jv-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.jv-input {
+  flex: 1; min-width: 0; height: 30px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0 10px; color: var(--text-0); font-size: 12px;
+  font-family: var(--ff-sans); outline: none;
+}
+.jv-input:focus { border-color: var(--accent); }
+.jv-input::placeholder { color: var(--text-3); }
+
 /* Thinking indicator */
 .cmd-thinking {
   display: flex; align-items: center; gap: 6px;

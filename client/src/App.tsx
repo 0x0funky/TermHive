@@ -8,6 +8,7 @@ import MessagesPanel from './components/MessagesPanel';
 import CommandPalette from './components/CommandPalette';
 import CommandPanel from './components/CommandPanel';
 import NotificationCenter from './components/NotificationCenter';
+import JarvisHud from './components/JarvisHud';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateAgentModal from './components/CreateAgentModal';
 import Ic, { MOD } from './components/Icons';
@@ -40,14 +41,12 @@ export default function App() {
   // Orchestrator-brain completion cue — shown when the brain finishes a task
   // while the Command panel is closed.
   const [brainDone, setBrainDone] = useState(false);
-  const [brainToast, setBrainToast] = useState(false);
   const [brainWorking, setBrainWorking] = useState(false);
   const [quickCmd, setQuickCmd] = useState('');
   const [notifSeen, setNotifSeen] = useState<Set<string>>(new Set());
   const commandOpenRef = useRef(commandOpen);
   commandOpenRef.current = commandOpen;
   const brainBusyRef = useRef(false);
-  const brainToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem('termhive:theme') as Theme) || 'dark';
@@ -124,12 +123,7 @@ export default function App() {
         } else if (p.status === 'idle' && brainBusyRef.current) {
           brainBusyRef.current = false;
           setBrainWorking(false);
-          if (!commandOpenRef.current) {
-            setBrainDone(true);
-            setBrainToast(true);
-            if (brainToastTimer.current) clearTimeout(brainToastTimer.current);
-            brainToastTimer.current = setTimeout(() => setBrainToast(false), 8000);
-          }
+          if (!commandOpenRef.current) setBrainDone(true);
         }
       }
     }
@@ -161,7 +155,7 @@ export default function App() {
 
   // Opening the Command panel clears the brain-completion cue.
   useEffect(() => {
-    if (commandOpen) { setBrainDone(false); setBrainToast(false); }
+    if (commandOpen) setBrainDone(false);
   }, [commandOpen]);
 
   useEffect(() => {
@@ -197,6 +191,19 @@ export default function App() {
     return out;
   }, [projects, agents]);
   const notifUnread = awaitingNotifs.filter((n) => !notifSeen.has(n.agentId)).length;
+
+  // Hive-wide running / idle counts for the Keeper HUD.
+  const globalCounts = useMemo(() => {
+    let running = 0;
+    let idle = 0;
+    for (const list of agents.values()) {
+      for (const a of list) {
+        if (a.status === 'running') running++;
+        else if (a.status === 'idle') idle++;
+      }
+    }
+    return { running, idle };
+  }, [agents]);
 
   // Drop seen ids whose agent no longer needs you — so it re-badges next time.
   useEffect(() => {
@@ -600,28 +607,16 @@ export default function App() {
         wsRef={wsRef}
       />
 
-      {!commandOpen && brainWorking && (
-        <button className="brain-toast working" onClick={() => setCommandOpen(true)}>
-          <span className="brain-toast-dots">
-            <span className="cmd-dot" /><span className="cmd-dot" /><span className="cmd-dot" />
-          </span>
-          <span className="brain-toast-txt">
-            <strong>The Keeper is working…</strong>
-            <span>Tap to watch</span>
-          </span>
-        </button>
-      )}
-      {!commandOpen && !brainWorking && brainToast && (
-        <button
-          className="brain-toast"
-          onClick={() => { setCommandOpen(true); setBrainToast(false); }}
-        >
-          <span className="brain-toast-mark"><Ic.logo size={14} /></span>
-          <span className="brain-toast-txt">
-            <strong>The Keeper finished</strong>
-            <span>Tap to see the result</span>
-          </span>
-        </button>
+      {!commandOpen && (
+        <JarvisHud
+          wsRef={wsRef}
+          send={send}
+          awaiting={awaitingNotifs}
+          running={globalCounts.running}
+          idle={globalCounts.idle}
+          onSelectAgent={handleSelectAgent}
+          onOpenFull={() => setCommandOpen(true)}
+        />
       )}
 
       {showNewProject && (
