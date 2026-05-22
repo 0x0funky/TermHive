@@ -254,23 +254,6 @@ async function main() {
         },
       },
       {
-        name: 'update_wiki',
-        description:
-          "Write (create or replace) a page in a project's wiki — its living " +
-          'knowledge base. Keep the wiki current: record decisions, progress, ' +
-          'blockers, and architecture as work happens. Pass the full new page ' +
-          'content; it replaces the page. Read the page first if you are refining it.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            project: { type: 'string', description: 'Project name or id.' },
-            page: { type: 'string', description: 'Wiki page filename, e.g. "progress.md".' },
-            content: { type: 'string', description: 'Full markdown content for the page.' },
-          },
-          required: ['project', 'page', 'content'],
-        },
-      },
-      {
         name: 'read_shared',
         description:
           'Read a project\'s shared content files — the docs and notes agents ' +
@@ -510,26 +493,6 @@ async function main() {
         const pages = body.pages || [];
         if (pages.length === 0) return text(`${body.projectName} wiki has no pages.`);
         return text(`${body.projectName} wiki pages:\n` + pages.map((p) => `- ${p}`).join('\n'));
-      }
-
-      if (name === 'update_wiki') {
-        const project = String(a.project || '').trim();
-        const page = String(a.page || '').trim();
-        const content = String(a.content ?? '');
-        if (!project || !page) return err('project and page are both required.');
-        const res = await daemonFetch(
-          `${args.daemonUrl}/org/update-wiki`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project, page, content }),
-          },
-          12_000,
-        );
-        const body = (await res.json().catch(() => ({}))) as
-          { ok?: boolean; projectName?: string; page?: string; error?: string };
-        if (!body.ok) return err(body.error || `Could not write wiki for "${project}".`);
-        return text(`Updated ${body.projectName} wiki — ${body.page}.`);
       }
 
       if (name === 'read_shared') {

@@ -498,30 +498,6 @@ export function readWiki(projectRef: string, page?: string): WikiReadResult {
   return { ok: true, projectName: project.name, initialized: true, pages };
 }
 
-export interface WikiWriteResult {
-  ok: boolean;
-  projectName?: string;
-  page?: string;
-  error?: string;
-}
-
-/**
- * Write (create or replace) a project wiki page — the Keeper's living memory.
- * The page name is sanitised to a flat `.md` filename (no path traversal).
- */
-export function writeWiki(projectRef: string, page: string, content: string): WikiWriteResult {
-  const project = resolveProject(projectRef);
-  if (!project) return { ok: false, error: `No project matching "${projectRef}".` };
-  const raw = String(page || '').trim();
-  if (!raw) return { ok: false, projectName: project.name, error: 'A wiki page name is required.' };
-  let filename = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/^[-.]+/, '');
-  if (!filename) filename = 'note.md';
-  if (!filename.toLowerCase().endsWith('.md')) filename += '.md';
-  const saved = storage.updateWikiFile(project.id, filename, String(content ?? ''));
-  if (!saved) return { ok: false, projectName: project.name, error: 'Failed to write the wiki page.' };
-  return { ok: true, projectName: project.name, page: filename };
-}
-
 /** Read a project's wiki overview — the "what is this project" summary. */
 export function projectOverview(projectRef: string): WikiReadResult {
   const project = resolveProject(projectRef);
