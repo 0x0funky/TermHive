@@ -9,9 +9,15 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { marked } from 'marked';
 import Ic from './Icons';
 import { useSpeechInput } from '../hooks/useSpeechInput';
 import type { AgentNotif } from './NotificationCenter';
+
+function renderMd(text: string): string {
+  try { return marked.parse(text, { async: false }) as string; }
+  catch { return text; }
+}
 
 function stopSpeaking() {
   try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
@@ -148,9 +154,10 @@ export default function JarvisHud({
                   The Keeper is working…
                 </span>
               ) : (
-                <span className="jv-reply-t">
-                  {reply.slice(0, 280)}{reply.length > 280 ? '…' : ''}
-                </span>
+                <div
+                  className="jv-reply-t cmd-md"
+                  dangerouslySetInnerHTML={{ __html: renderMd(reply) }}
+                />
               )}
             </div>
           )}
