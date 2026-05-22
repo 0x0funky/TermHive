@@ -77,7 +77,10 @@ interface Props {
   /** Brain state, fed from App (whose ws.onmessage is the reliable sink). */
   working: boolean;
   lastReply: { text: string; ts: number } | null;
-  wake: { enabled: boolean; supported: boolean; armed: boolean; onToggle: () => void };
+  wake: {
+    enabled: boolean; supported: boolean; armed: boolean; phrase: string;
+    onToggle: () => void; onPhraseChange: (v: string) => void;
+  };
   awaiting: AgentNotif[];
   running: number;
   idle: number;
@@ -164,6 +167,20 @@ export default function JarvisHud({
               <Ic.x size={12} />
             </button>
           </div>
+
+          {wake.enabled && (
+            <div className="jv-wake-cfg">
+              <Ic.mic size={11} />
+              <span className="jv-wake-lbl">喚醒詞</span>
+              <input
+                className="jv-wake-input"
+                value={wake.phrase}
+                onChange={(e) => wake.onPhraseChange(e.target.value)}
+                placeholder="中文喚醒詞…"
+                spellCheck={false}
+              />
+            </div>
+          )}
 
           <div className="jv-status">
             <span className="jv-stat"><i className="sdot running" />{running} running</span>

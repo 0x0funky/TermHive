@@ -1851,6 +1851,20 @@ input, select, textarea { font-family: inherit; }
 .jv-input:focus { border-color: var(--accent); }
 .jv-input::placeholder { color: var(--text-3); }
 
+.jv-wake-cfg {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+}
+.jv-wake-lbl { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.jv-wake-input {
+  flex: 1; min-width: 0; height: 24px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0 8px; color: var(--text-0); font-size: 12px;
+  font-family: var(--ff-sans); outline: none;
+}
+.jv-wake-input:focus { border-color: var(--accent); }
+
 /* Thinking indicator */
 .cmd-thinking {
   display: flex; align-items: center; gap: 6px;

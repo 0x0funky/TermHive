@@ -15,19 +15,23 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-const WAKE_TERMS = ['hey queen', 'queen', 'hey 皇后', '嘿皇后', '皇后', '皇後'];
 const ARM_TIMEOUT = 9000; // disarm if no command follows the wake phrase
 
 interface WakeOptions {
   enabled: boolean;
+  /** The wake phrase to listen for. Must be Chinese — the recognition runs in
+   *  zh-TW (for the commands), and a zh model won't transcribe English. */
+  phrase: string;
   onWake: () => void;
   onCommand: (text: string) => void;
 }
 
-export function useWakeWord({ enabled, onWake, onCommand }: WakeOptions) {
+export function useWakeWord({ enabled, phrase, onWake, onCommand }: WakeOptions) {
   const [armed, setArmed] = useState(false);
   const [listening, setListening] = useState(false);
   const armedRef = useRef(false);
+  const phraseRef = useRef(phrase);
+  phraseRef.current = phrase;
   const cbRef = useRef({ onWake, onCommand });
   cbRef.current = { onWake, onCommand };
 
@@ -70,17 +74,13 @@ export function useWakeWord({ enabled, onWake, onCommand }: WakeOptions) {
         return;
       }
       const lc = raw.toLowerCase();
-      let hit = -1;
-      let hitLen = 0;
-      for (const term of WAKE_TERMS) {
-        const i = lc.indexOf(term);
-        if (i >= 0 && (hit < 0 || i < hit)) { hit = i; hitLen = term.length; }
-      }
+      const term = phraseRef.current.trim().toLowerCase();
+      const hit = term ? lc.indexOf(term) : -1;
       if (hit < 0) {
-        console.log('[wake] · no wake word in that — ignored');
+        console.log(`[wake] · no wake word ("${term}") in that — ignored`);
         return;
       }
-      const after = raw.slice(hit + hitLen).replace(/^[\s,，。、:：!！?？]+/, '').trim();
+      const after = raw.slice(hit + term.length).replace(/^[\s,，。、:：!！?？]+/, '').trim();
       if (after) {
         console.log('[wake] ✦ wake word + command in one breath:', after);
         cbRef.current.onCommand(after);

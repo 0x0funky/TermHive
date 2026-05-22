@@ -48,6 +48,9 @@ export default function App() {
   const [wakeEnabled, setWakeEnabled] = useState(
     () => localStorage.getItem('termhive:wake') === '1',
   );
+  const [wakePhrase, setWakePhrase] = useState(
+    () => localStorage.getItem('termhive:wake-phrase') || '皇后',
+  );
   const [notifSeen, setNotifSeen] = useState<Set<string>>(new Set());
   const commandOpenRef = useRef(commandOpen);
   commandOpenRef.current = commandOpen;
@@ -351,12 +354,16 @@ export default function App() {
   // Always-on wake word — "Hey Queen, <command>" drives the brain hands-free.
   const wake = useWakeWord({
     enabled: wakeEnabled,
+    phrase: wakePhrase,
     onWake: () => { /* armed — the Jarvis orb shows the listening cue */ },
     onCommand: (text) => fireQuickCmd(text),
   });
   useEffect(() => {
     localStorage.setItem('termhive:wake', wakeEnabled ? '1' : '0');
   }, [wakeEnabled]);
+  useEffect(() => {
+    localStorage.setItem('termhive:wake-phrase', wakePhrase);
+  }, [wakePhrase]);
 
   const logoImg = theme === 'light' ? logoLight : logoDark;
 
@@ -639,7 +646,9 @@ export default function App() {
             enabled: wakeEnabled,
             supported: wake.supported,
             armed: wake.armed,
+            phrase: wakePhrase,
             onToggle: () => setWakeEnabled((v) => !v),
+            onPhraseChange: setWakePhrase,
           }}
           awaiting={awaitingNotifs}
           running={globalCounts.running}
