@@ -41,12 +41,16 @@ const AGENTS_MD_PATH = path.join(BRAIN_DIR, 'AGENTS.md');
  * existing conversations has to ride on the turn itself.
  */
 const TURN_SUFFIX =
-  '\n\n---\n[System reminder] End your reply with a final line starting ' +
-  'with 🔊 — a spoken summary of 2 to 4 full sentences that conveys the ' +
-  'substance: what was done, the current state, and what is needed next. ' +
-  'Brief a colleague — informative and specific, not a one-line platitude. ' +
-  'Plain spoken language, all on a single line, no markdown, no file paths. ' +
-  'This line is read aloud.';
+  '\n\n---\n[System reminder] You are speaking aloud as you work — be ' +
+  'conversational.\n' +
+  '(1) Before each significant step (reading a project, checking a wiki, ' +
+  'asking an agent), write one short, plain, conversational sentence saying ' +
+  'what you are about to do — e.g. "我先看一下 ardi 的 wiki。". These lines ' +
+  'are read aloud so the user hears you working.\n' +
+  '(2) End your reply with a final line starting with 🔊 — a spoken summary ' +
+  'of 2 to 4 full sentences: what was done, the current state, and what is ' +
+  'needed next. Informative and specific, not a one-line platitude.\n' +
+  'All spoken lines: plain language, no markdown, no file paths.';
 
 /** The brain's persona + operating rules — loaded by Codex as AGENTS.md. */
 const AGENTS_MD = `# The Keeper — Termhive Orchestrator Brain

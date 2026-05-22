@@ -56,7 +56,9 @@ function speakReply(text: string) {
   u.lang = 'zh-TW';
   const zh = window.speechSynthesis.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
   if (zh) u.voice = zh;
-  window.speechSynthesis.cancel();
+  // No cancel() — utterances queue, so the Keeper's step-by-step narration
+  // and its closing summary are spoken in order. stopSpeaking() (new turn /
+  // voice off) is the only thing that clears the queue.
   window.speechSynthesis.speak(u);
 }
 
