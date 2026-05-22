@@ -23,25 +23,35 @@ function stopSpeaking() {
   try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
 }
 
+/** Pull the Keeper's explicit spoken-summary line (`🔊 …`) out of a reply. */
+const SPOKEN_RE = /🔊[ \t]*([^\n]+)/;
+
 /**
- * Speak a short, spoken-friendly version of a Keeper reply. We strip markdown
- * and speak the first two sentences: the Keeper often opens with a process
- * line ("agents started and reported…") and puts the real conclusion in the
- * second sentence, so one sentence isn't enough. The screen shows it all.
+ * Speak a Keeper reply. The Keeper ends every reply with an explicit
+ * `🔊 <one sentence>` line — its own chosen takeaway — and we speak exactly
+ * that. If it's missing (old reply / non-compliance), fall back to the first
+ * two sentences, markdown stripped.
  */
 function speakReply(text: string) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const clean = text
-    .replace(/```[\s\S]*?```/g, ' ')            // drop code blocks
-    .replace(/`([^`]+)`/g, '$1')                // inline code → plain
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')    // links → label
-    .replace(/[*_#>]/g, '')                     // markdown symbols
-    .replace(/^\s*[-•]\s*/gm, '')               // list bullets
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!clean) return;
-  const sentences = clean.split(/(?<=[。.!?！?])\s*/).filter((s) => s.trim());
-  const spoken = (sentences.slice(0, 2).join('') || clean).slice(0, 240);
+  let spoken = '';
+  const marked = text.match(SPOKEN_RE);
+  if (marked) {
+    spoken = marked[1].replace(/[*_`#>]/g, '').trim();
+  } else {
+    const clean = text
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[*_#>]/g, '')
+      .replace(/^\s*[-•]\s*/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const sentences = clean.split(/(?<=[。.!?！?])\s*/).filter((s) => s.trim());
+    spoken = sentences.slice(0, 2).join('') || clean;
+  }
+  spoken = spoken.slice(0, 260).trim();
+  if (!spoken) return;
   const u = new SpeechSynthesisUtterance(spoken);
   u.lang = 'zh-TW';
   const zh = window.speechSynthesis.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
@@ -70,7 +80,8 @@ export default function JarvisHud({
   const [voiceOut, setVoiceOut] = useState(
     () => localStorage.getItem('termhive:voice-out') === '1',
   );
-  const reply = lastReply?.text || '';
+  // Show the reply without the trailing 🔊 spoken-summary line.
+  const reply = (lastReply?.text || '').replace(/\s*🔊[^\n]*\s*$/, '').trim();
   const speech = useSpeechInput((t) => setInput(t));
   const inputRef = useRef<HTMLInputElement>(null);
   const voiceOutRef = useRef(voiceOut);
