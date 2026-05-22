@@ -35,6 +35,17 @@ const CODEX_HOME = path.join(BRAIN_DIR, 'codex-home');
 const STATE_PATH = path.join(BRAIN_DIR, 'state.json');
 const AGENTS_MD_PATH = path.join(BRAIN_DIR, 'AGENTS.md');
 
+/**
+ * Appended to every turn's input. Codex bakes AGENTS.md in at conversation
+ * creation — `exec resume` does NOT re-read it — so a rule that must apply to
+ * existing conversations has to ride on the turn itself.
+ */
+const TURN_SUFFIX =
+  '\n\n---\n[System reminder] End your reply with a final line in exactly ' +
+  'this form:\n🔊 <one sentence>\n— one short, plain, conversational ' +
+  'spoken-summary sentence: the single key takeaway (a finding, a risk, a ' +
+  'decision needed), no markdown, no file paths. Only this line is read aloud.';
+
 /** The brain's persona + operating rules — loaded by Codex as AGENTS.md. */
 const AGENTS_MD = `# The Keeper — Termhive Orchestrator Brain
 
@@ -283,7 +294,9 @@ export class Orchestrator {
       let producedAssistant = false;
 
       child.stdin?.on('error', () => { /* ignore broken pipe */ });
-      child.stdin?.write(prompt);
+      // The spoken-summary rule rides on every turn — exec resume won't pick
+      // it up from AGENTS.md.
+      child.stdin?.write(prompt + TURN_SUFFIX);
       child.stdin?.end();
 
       child.stdout?.on('data', (d: Buffer) => {
