@@ -19,7 +19,12 @@ function renderMd(text: string): string {
   catch { return text; }
 }
 
-interface TtsCfg { provider: 'browser' | 'openai' | 'gemini'; model: string; voice: string }
+interface TtsCfg {
+  enabled: boolean;
+  provider: 'browser' | 'openai' | 'gemini';
+  model: string;
+  voice: string;
+}
 
 /**
  * Single global TTS queue — the Keeper's step narration and its closing 🔊
@@ -63,6 +68,7 @@ function extractSpoken(text: string): string {
 }
 
 function speakReply(text: string, cfg: TtsCfg) {
+  if (!cfg.enabled) return;   // master TTS off
   const spoken = extractSpoken(text);
   if (!spoken) return;
   ttsQueue.push({ spoken, cfg });

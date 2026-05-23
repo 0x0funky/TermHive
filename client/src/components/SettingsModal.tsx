@@ -21,7 +21,12 @@ interface ProviderSpec {
 
 interface VoiceConfig {
   stt: { provider: 'browser' | 'openai' | 'gemini'; model: string; language: string };
-  tts: { provider: 'browser' | 'openai' | 'gemini'; model: string; voice: string };
+  tts: {
+    enabled: boolean;
+    provider: 'browser' | 'openai' | 'gemini';
+    model: string;
+    voice: string;
+  };
 }
 
 interface Props {
@@ -170,9 +175,20 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
 
           <section className="settings-sec">
             <h4>Text-to-speech</h4>
+            <Row label="Speak replies">
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={cfg.tts.enabled}
+                  onChange={(e) => setCfg({ ...cfg, tts: { ...cfg.tts, enabled: e.target.checked } })}
+                />
+                <span>{cfg.tts.enabled ? 'On — the Keeper reads its replies aloud' : 'Off — silent'}</span>
+              </label>
+            </Row>
             <Row label="Provider">
               <select
                 value={cfg.tts.provider}
+                disabled={!cfg.tts.enabled}
                 onChange={(e) => setTtsProvider(e.target.value as VoiceConfig['tts']['provider'])}
               >
                 {ttsProviders.map((p) => (

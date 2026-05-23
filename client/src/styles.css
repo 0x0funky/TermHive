@@ -2155,6 +2155,12 @@ input, select, textarea { font-family: inherit; }
   font-family: var(--ff-sans); outline: none;
 }
 .settings-row-ctrl select:focus { border-color: var(--accent); }
+.settings-row-ctrl select:disabled { opacity: 0.5; cursor: not-allowed; }
+.settings-toggle {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-1); cursor: pointer;
+}
+.settings-toggle input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
 .settings-keys {
   margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
