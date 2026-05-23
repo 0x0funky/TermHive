@@ -19,21 +19,30 @@ function renderMd(text: string): string {
   catch { return text; }
 }
 
+interface TtsCfg { provider: 'browser' | 'openai' | 'gemini'; model: string; voice: string }
+
+/**
+ * Single global TTS queue — the Keeper's step narration and its closing 🔊
+ * summary play back in order, and `stopSpeaking()` is the only thing that
+ * clears them. Each job carries the per-call TTS config so we can switch
+ * provider on the fly without dropping in-flight audio.
+ */
+let ttsQueue: Array<{ spoken: string; cfg: TtsCfg }> = [];
+let ttsBusy = false;
+let ttsCurrent: HTMLAudioElement | null = null;
+
 function stopSpeaking() {
+  ttsQueue = [];
+  ttsBusy = false;
+  if (ttsCurrent) { try { ttsCurrent.pause(); } catch { /* ignore */ } ttsCurrent = null; }
   try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
 }
 
 /** Pull the Keeper's explicit spoken-summary line (`🔊 …`) out of a reply. */
 const SPOKEN_RE = /🔊[ \t]*([^\n]+)/;
 
-/**
- * Speak a Keeper reply. The Keeper ends every reply with an explicit
- * `🔊 <one sentence>` line — its own chosen takeaway — and we speak exactly
- * that. If it's missing (old reply / non-compliance), fall back to the first
- * two sentences, markdown stripped.
- */
-function speakReply(text: string) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+/** Distill the speakable line out of a Keeper reply. */
+function extractSpoken(text: string): string {
   let spoken = '';
   const marked = text.match(SPOKEN_RE);
   if (marked) {
@@ -50,26 +59,73 @@ function speakReply(text: string) {
     const sentences = clean.split(/(?<=[。.!?！?])\s*/).filter((s) => s.trim());
     spoken = sentences.slice(0, 2).join('') || clean;
   }
-  spoken = spoken.slice(0, 500).trim();
+  return spoken.slice(0, 500).trim();
+}
+
+function speakReply(text: string, cfg: TtsCfg) {
+  const spoken = extractSpoken(text);
   if (!spoken) return;
-  const synth = window.speechSynthesis;
-  const zh = synth.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
-  // When the synth is idle the audio device sleeps; waking it clips the start
-  // of the next utterance. Queue a short, quiet warm-up to take that hit, so
-  // the real line is heard from its first word.
-  if (!synth.speaking && !synth.pending) {
-    const warm = new SpeechSynthesisUtterance('嗯。嗯。嗯。');
-    warm.lang = 'zh-TW';
-    warm.volume = 0.1;
-    if (zh) warm.voice = zh;
-    synth.speak(warm);
+  ttsQueue.push({ spoken, cfg });
+  void processTtsQueue();
+}
+
+async function processTtsQueue(): Promise<void> {
+  if (ttsBusy || ttsQueue.length === 0) return;
+  ttsBusy = true;
+  const job = ttsQueue.shift()!;
+  try {
+    if (job.cfg.provider === 'openai' || job.cfg.provider === 'gemini') {
+      await playApi(job.spoken);
+    } else {
+      await playBrowser(job.spoken);
+    }
+  } catch (err) {
+    console.warn('[tts] failed:', err);
+  } finally {
+    ttsBusy = false;
+    if (ttsQueue.length > 0) void processTtsQueue();
   }
-  const u = new SpeechSynthesisUtterance(spoken);
-  u.lang = 'zh-TW';
-  if (zh) u.voice = zh;
-  // No cancel() — utterances queue, so the step-by-step narration and the
-  // closing summary are spoken in order. stopSpeaking() clears the queue.
-  synth.speak(u);
+}
+
+async function playApi(text: string): Promise<void> {
+  const r = await fetch('/api/voice/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!r.ok) throw new Error(`tts ${r.status}: ${await r.text().catch(() => '')}`);
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = new Audio(url);
+  ttsCurrent = a;
+  await new Promise<void>((resolve) => {
+    const done = () => { URL.revokeObjectURL(url); if (ttsCurrent === a) ttsCurrent = null; resolve(); };
+    a.onended = done;
+    a.onerror = done;
+    a.play().catch(done);
+  });
+}
+
+async function playBrowser(text: string): Promise<void> {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const synth = window.speechSynthesis;
+  return new Promise((resolve) => {
+    const zh = synth.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
+    // Quiet warm-up absorbs the audio-device wake-up clip on the first line.
+    if (!synth.speaking && !synth.pending) {
+      const warm = new SpeechSynthesisUtterance('嗯。嗯。嗯。');
+      warm.lang = 'zh-TW';
+      warm.volume = 0.1;
+      if (zh) warm.voice = zh;
+      synth.speak(warm);
+    }
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-TW';
+    if (zh) u.voice = zh;
+    u.onend = () => resolve();
+    u.onerror = () => resolve();
+    synth.speak(u);
+  });
 }
 
 interface Props {
@@ -77,6 +133,8 @@ interface Props {
   /** Brain state, fed from App (whose ws.onmessage is the reliable sink). */
   working: boolean;
   lastReply: { text: string; ts: number } | null;
+  sttCfg: { provider: 'browser' | 'openai' | 'gemini'; language: string };
+  ttsCfg: TtsCfg;
   wake: {
     enabled: boolean; supported: boolean; armed: boolean; phrase: string;
     onToggle: () => void; onPhraseChange: (v: string) => void;
@@ -89,7 +147,7 @@ interface Props {
 }
 
 export default function JarvisHud({
-  send, working, lastReply, wake, awaiting, running, idle, onSelectAgent, onOpenFull,
+  send, working, lastReply, sttCfg, ttsCfg, wake, awaiting, running, idle, onSelectAgent, onOpenFull,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -106,10 +164,13 @@ export default function JarvisHud({
   };
 
   // Voice input — fill the box, and on a final result send automatically.
-  const speech = useSpeechInput((t, final) => {
-    setInput(t);
-    if (final && t.trim()) submit(t);
-  });
+  // The provider/language come from the user's settings (Browser / OpenAI / Gemini).
+  const speech = useSpeechInput(
+    (t, final) => { setInput(t); if (final && t.trim()) submit(t); },
+    { provider: sttCfg.provider, language: sttCfg.language },
+  );
+  const ttsCfgRef = useRef(ttsCfg);
+  ttsCfgRef.current = ttsCfg;
   const inputRef = useRef<HTMLInputElement>(null);
   const voiceOutRef = useRef(voiceOut);
   voiceOutRef.current = voiceOut;
@@ -121,7 +182,7 @@ export default function JarvisHud({
 
   // Speak each new Keeper reply when voice replies are on.
   useEffect(() => {
-    if (lastReply && voiceOutRef.current) speakReply(lastReply.text);
+    if (lastReply && voiceOutRef.current) speakReply(lastReply.text, ttsCfgRef.current);
   }, [lastReply]);
 
   // A new turn starting cuts off any in-progress speech.

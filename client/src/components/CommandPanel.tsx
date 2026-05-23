@@ -53,6 +53,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   wsRef: React.RefObject<WebSocket | null>;
+  sttCfg: { provider: 'browser' | 'openai' | 'gemini'; language: string };
 }
 
 const EXAMPLES = [
@@ -71,7 +72,7 @@ function timeAgo(ts: string): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-export default function CommandPanel({ open, onClose, wsRef }: Props) {
+export default function CommandPanel({ open, onClose, wsRef, sttCfg }: Props) {
   const [messages, setMessages] = useState<BrainMessage[]>([]);
   const [status, setStatus] = useState<BrainStatus>('idle');
   const [conversations, setConversations] = useState<BrainConversationMeta[]>([]);
@@ -80,10 +81,10 @@ export default function CommandPanel({ open, onClose, wsRef }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const speech = useSpeechInput((text, final) => {
-    setInput(text);
-    if (final && text.trim()) send(text);
-  });
+  const speech = useSpeechInput(
+    (text, final) => { setInput(text); if (final && text.trim()) send(text); },
+    { provider: sttCfg.provider, language: sttCfg.language },
+  );
 
   // Keep the active conversation id reachable from the (long-lived) ws handler.
   const currentIdRef = useRef(currentId);

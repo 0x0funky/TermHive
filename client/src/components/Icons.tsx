@@ -186,6 +186,12 @@ const Ic = {
       <path d="M8 1v5l3 2-3 2v5l-3-5-5 3 5-3-5-3 5 3 3-5z" />
     </svg>
   ),
+  settings: (p: IconProps = {}) => (
+    <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth || 1.5} strokeLinecap="round" strokeLinejoin="round" style={p.style} className={p.className}>
+      <circle cx="8" cy="8" r="2.2" />
+      <path d="M13 8c0-.3-.03-.57-.07-.84l1.42-1.1-1.5-2.6-1.7.68a4.7 4.7 0 00-1.46-.84L9.5 1.5h-3l-.19 1.8a4.7 4.7 0 00-1.46.84l-1.7-.68-1.5 2.6 1.42 1.1A4.7 4.7 0 003 8c0 .29.02.57.07.84L1.65 9.94l1.5 2.6 1.7-.68c.43.34.92.62 1.46.84l.19 1.8h3l.19-1.8c.54-.22 1.03-.5 1.46-.84l1.7.68 1.5-2.6-1.42-1.1c.05-.27.07-.55.07-.84z" />
+    </svg>
+  ),
   volume: (p: IconProps = {}) => (
     <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth || 1.5} strokeLinecap="round" strokeLinejoin="round" style={p.style} className={p.className}>
       <path d="M8.5 3L4.5 6H2v4h2.5l4 3V3Z" />

@@ -1,3 +1,4 @@
+import 'dotenv/config'; // load OPENAI_API_KEY / GEMINI_API_KEY from .env
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -9,6 +10,10 @@ import * as activity from './activity.js';
 import * as usage from './usage.js';
 import { DaemonClient } from './daemon/client.js';
 import type { WSClientMessage, WSServerMessage, ActivityEvent } from './types.js';
+import { PROVIDERS } from './voice/providers.js';
+import { loadConfig as loadVoiceConfig, saveConfig as saveVoiceConfig, hasKey } from './voice/config.js';
+import { transcribeOpenAI, ttsOpenAI } from './voice/openai.js';
+import { transcribeGemini, ttsGemini } from './voice/gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3200', 10);
@@ -123,6 +128,82 @@ app.get('/api/usage', async (_req, res) => {
 // Daemon health endpoint
 app.get('/api/daemon/status', (_req, res) => {
   res.json({ connected: daemon.isConnected() });
+});
+
+// ─── Voice (STT / TTS) ─────────────────────────────────────────────────
+
+app.get('/api/voice/config', (_req, res) => {
+  res.json({
+    config: loadVoiceConfig(),
+    providers: PROVIDERS,
+    keys: { openai: hasKey('openai'), gemini: hasKey('gemini') },
+  });
+});
+
+app.put('/api/voice/config', (req, res) => {
+  try {
+    saveVoiceConfig(req.body);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// Raw audio bytes in, JSON {text} out. Browser sends the recorded blob with
+// Content-Type: audio/webm (or similar). express.raw matches audio/* only so
+// the global express.json() above isn't disturbed.
+app.post(
+  '/api/voice/transcribe',
+  express.raw({ type: 'audio/*', limit: '25mb' }),
+  async (req, res) => {
+    try {
+      const cfg = loadVoiceConfig();
+      const mime = String(req.headers['content-type'] || 'audio/webm');
+      const audio = req.body as Buffer;
+      if (!audio || audio.length === 0) {
+        res.status(400).json({ error: 'no audio body' });
+        return;
+      }
+      let text = '';
+      if (cfg.stt.provider === 'openai') {
+        text = await transcribeOpenAI(audio, mime, cfg.stt.model, cfg.stt.language || undefined);
+      } else if (cfg.stt.provider === 'gemini') {
+        text = await transcribeGemini(audio, mime, cfg.stt.model, cfg.stt.language || undefined);
+      } else {
+        res.status(400).json({ error: 'STT provider is "browser" — transcription happens in the browser, not here' });
+        return;
+      }
+      res.json({ text });
+    } catch (err) {
+      console.warn('[voice/transcribe]', err);
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
+// Text in, audio bytes out. Single global Content-Type negotiation via the
+// returned mime header.
+app.post('/api/voice/tts', async (req, res) => {
+  try {
+    const cfg = loadVoiceConfig();
+    const text = String(req.body?.text || '').slice(0, 2000);
+    if (!text) { res.status(400).json({ error: 'no text' }); return; }
+    let out: { audio: Buffer; mime: string };
+    if (cfg.tts.provider === 'openai') {
+      out = await ttsOpenAI(text, cfg.tts.model, cfg.tts.voice);
+    } else if (cfg.tts.provider === 'gemini') {
+      out = await ttsGemini(text, cfg.tts.model, cfg.tts.voice);
+    } else {
+      res.status(400).json({ error: 'TTS provider is "browser" — synthesis happens in the browser, not here' });
+      return;
+    }
+    res.setHeader('Content-Type', out.mime);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(out.audio);
+  } catch (err) {
+    console.warn('[voice/tts]', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 // Codex model list — for the Codex agent view's model picker

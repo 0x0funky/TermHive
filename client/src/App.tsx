@@ -15,6 +15,8 @@ import Ic, { MOD } from './components/Icons';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSpeechInput } from './hooks/useSpeechInput';
 import { useWakeWord } from './hooks/useWakeWord';
+import { useVoiceConfig } from './hooks/useVoiceConfig';
+import SettingsModal from './components/SettingsModal';
 import logoDark from './assets/logo_dark_sm.jpg';
 import logoLight from './assets/logo_light_sm.jpg';
 import * as api from './api';
@@ -51,6 +53,8 @@ export default function App() {
   const [wakePhrase, setWakePhrase] = useState(
     () => localStorage.getItem('termhive:wake-phrase') || '皇后',
   );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const voice = useVoiceConfig();
   const [notifSeen, setNotifSeen] = useState<Set<string>>(new Set());
   const commandOpenRef = useRef(commandOpen);
   commandOpenRef.current = commandOpen;
@@ -346,10 +350,10 @@ export default function App() {
 
   // Voice input for the header quick-command box — speak, and on a final
   // result fire it automatically (no manual send).
-  const quickSpeech = useSpeechInput((text, final) => {
-    setQuickCmd(text);
-    if (final && text.trim()) fireQuickCmd(text);
-  });
+  const quickSpeech = useSpeechInput(
+    (text, final) => { setQuickCmd(text); if (final && text.trim()) fireQuickCmd(text); },
+    { provider: voice.cfg.stt.provider, language: voice.cfg.stt.language },
+  );
 
   // Always-on wake word — "Hey Queen, <command>" drives the brain hands-free.
   const wake = useWakeWord({
@@ -456,6 +460,13 @@ export default function App() {
               </button>
             ))}
           </div>
+          <button
+            className="hbtn"
+            title="Voice settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Ic.settings size={13} />
+          </button>
           <button
             className="hbtn"
             title="Toggle theme"
@@ -635,6 +646,7 @@ export default function App() {
         open={commandOpen}
         onClose={() => setCommandOpen(false)}
         wsRef={wsRef}
+        sttCfg={{ provider: voice.cfg.stt.provider, language: voice.cfg.stt.language }}
       />
 
       {!commandOpen && (
@@ -642,6 +654,8 @@ export default function App() {
           send={send}
           working={brainWorking}
           lastReply={brainReply}
+          sttCfg={{ provider: voice.cfg.stt.provider, language: voice.cfg.stt.language }}
+          ttsCfg={voice.cfg.tts}
           wake={{
             enabled: wakeEnabled,
             supported: wake.supported,
@@ -657,6 +671,12 @@ export default function App() {
           onOpenFull={() => setCommandOpen(true)}
         />
       )}
+
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={voice.refresh}
+      />
 
       {showNewProject && (
         <CreateProjectModal
