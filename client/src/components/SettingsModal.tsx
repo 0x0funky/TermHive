@@ -47,8 +47,35 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
   const [cfg, setCfg] = useState<VoiceConfig | null>(null);
   const [providers, setProviders] = useState<ProviderSpec[]>([]);
   const [keys, setKeys] = useState<{ openai: boolean; gemini: boolean }>({ openai: false, gemini: false });
+  const [openaiInput, setOpenaiInput] = useState('');
+  const [geminiInput, setGeminiInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const reloadKeys = () => {
+    fetch('/api/voice/config')
+      .then((r) => r.json())
+      .then((d) => { if (d?.keys) setKeys(d.keys); })
+      .catch(() => { /* ignore */ });
+  };
+
+  const clearKey = async (provider: 'openai' | 'gemini') => {
+    setErr(null);
+    try {
+      const r = await fetch('/api/voice/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKeys: { [provider]: '' } }),
+      });
+      if (!r.ok) throw new Error(`clear ${r.status}`);
+      if (provider === 'openai') setOpenaiInput('');
+      else setGeminiInput('');
+      reloadKeys();
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -110,15 +137,27 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
     setSaving(true);
     setErr(null);
     try {
+      const body: { stt: VoiceConfig['stt']; tts: VoiceConfig['tts']; apiKeys?: { openai?: string; gemini?: string } } = {
+        stt: cfg.stt, tts: cfg.tts,
+      };
+      // Only include keys the user actually typed — empty inputs leave the
+      // saved keys alone. Clearing goes through the explicit "Clear" button.
+      const apiKeys: { openai?: string; gemini?: string } = {};
+      if (openaiInput.trim()) apiKeys.openai = openaiInput.trim();
+      if (geminiInput.trim()) apiKeys.gemini = geminiInput.trim();
+      if (Object.keys(apiKeys).length > 0) body.apiKeys = apiKeys;
+
       const r = await fetch('/api/voice/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || `save ${r.status}`);
       }
+      setOpenaiInput('');
+      setGeminiInput('');
       onSaved();
       onClose();
     } catch (e) {
@@ -224,21 +263,47 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
             )}
           </section>
 
-          <section className="settings-keys">
-            <div className="settings-keys-h">
-              API keys (set in <code>.env</code> at the project root)
-            </div>
-            <div className={'key-row ' + (keys.openai ? 'ok' : 'miss')}>
-              <code>OPENAI_API_KEY</code>
-              <span>{keys.openai ? '✓ set' : '— not set'}</span>
-            </div>
-            <div className={'key-row ' + (keys.gemini ? 'ok' : 'miss')}>
-              <code>GEMINI_API_KEY</code>
-              <span>{keys.gemini ? '✓ set' : '— not set'}</span>
-            </div>
+          <section className="settings-sec">
+            <h4>API keys</h4>
             <div className="settings-keys-note">
-              After editing <code>.env</code>, restart the web server (<code>npm start</code>).
+              Stored locally in <code>~/.termhive/api-keys.json</code> — never
+              committed, never sent anywhere except the provider you call.
+              Setting one in <code>.env</code> overrides this.
             </div>
+            <Row label="OpenAI">
+              <div className="settings-key-row">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={keys.openai ? '••• key saved (paste a new one to replace)' : 'sk-…'}
+                  value={openaiInput}
+                  onChange={(e) => setOpenaiInput(e.target.value)}
+                />
+                {keys.openai && (
+                  <button className="hbtn" onClick={() => clearKey('openai')} title="Clear saved key">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </Row>
+            <Row label="Gemini">
+              <div className="settings-key-row">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={keys.gemini ? '••• key saved (paste a new one to replace)' : 'AIza…'}
+                  value={geminiInput}
+                  onChange={(e) => setGeminiInput(e.target.value)}
+                />
+                {keys.gemini && (
+                  <button className="hbtn" onClick={() => clearKey('gemini')} title="Clear saved key">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </Row>
           </section>
 
           {err && <div className="settings-err">{err}</div>}

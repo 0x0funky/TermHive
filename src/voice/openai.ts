@@ -1,13 +1,15 @@
 /** OpenAI Audio API — STT (transcriptions) + TTS (speech). */
 
+import { getApiKey } from './config.js';
+
 export async function transcribeOpenAI(
   audio: Buffer,
   mime: string,
   model: string,
   language?: string,
 ): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY not set in .env');
+  const apiKey = getApiKey('openai');
+  if (!apiKey) throw new Error('OpenAI API key not set — add it in Voice Settings or .env');
 
   const ext = mime.split('/')[1]?.split(';')[0] || 'webm';
   const form = new FormData();
@@ -30,8 +32,8 @@ export async function ttsOpenAI(
   model: string,
   voice: string,
 ): Promise<{ audio: Buffer; mime: string }> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY not set in .env');
+  const apiKey = getApiKey('openai');
+  if (!apiKey) throw new Error('OpenAI API key not set — add it in Voice Settings or .env');
 
   const r = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',

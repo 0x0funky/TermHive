@@ -6,11 +6,13 @@
  * container so the browser <audio> element can play it directly.
  */
 
+import { getApiKey } from './config.js';
+
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 function key(): string {
-  const k = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!k) throw new Error('GEMINI_API_KEY not set in .env');
+  const k = getApiKey('gemini');
+  if (!k) throw new Error('Gemini API key not set — add it in Voice Settings or .env');
   return k;
 }
 

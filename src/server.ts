@@ -11,7 +11,7 @@ import * as usage from './usage.js';
 import { DaemonClient } from './daemon/client.js';
 import type { WSClientMessage, WSServerMessage, ActivityEvent } from './types.js';
 import { PROVIDERS } from './voice/providers.js';
-import { loadConfig as loadVoiceConfig, saveConfig as saveVoiceConfig, hasKey } from './voice/config.js';
+import { loadConfig as loadVoiceConfig, saveConfig as saveVoiceConfig, hasKey, saveApiKeys } from './voice/config.js';
 import { transcribeOpenAI, ttsOpenAI } from './voice/openai.js';
 import { transcribeGemini, ttsGemini } from './voice/gemini.js';
 
@@ -142,7 +142,22 @@ app.get('/api/voice/config', (_req, res) => {
 
 app.put('/api/voice/config', (req, res) => {
   try {
-    saveVoiceConfig(req.body);
+    const body = (req.body || {}) as {
+      stt?: unknown; tts?: unknown;
+      apiKeys?: { openai?: string; gemini?: string };
+    };
+    // Settings (stt/tts) live in voice.json.
+    if (body.stt || body.tts) {
+      const cur = loadVoiceConfig();
+      saveVoiceConfig({
+        stt: (body.stt as typeof cur.stt) || cur.stt,
+        tts: (body.tts as typeof cur.tts) || cur.tts,
+      });
+    }
+    // Secrets (apiKeys) live in api-keys.json — never echoed back.
+    if (body.apiKeys && typeof body.apiKeys === 'object') {
+      saveApiKeys(body.apiKeys);
+    }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
