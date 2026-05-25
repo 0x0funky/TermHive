@@ -125,15 +125,37 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
       return;
     }
 
+    const tStart = performance.now();
     const chunks: BlobPart[] = [];
-    mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    let totalBytes = 0;
+    console.log('[speech] ▶ recording start — mime:', mime, 'timeslice: 500ms');
+
+    mr.onstart = () => console.log('[speech] mr.onstart fired (recorder active)');
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        chunks.push(e.data);
+        totalBytes += e.data.size;
+        console.log(`[speech] chunk #${chunks.length}: ${e.data.size} bytes (total ${totalBytes})`);
+      }
+    };
+    // Track if anything externally pauses the recorder — surprises here are
+    // the most likely culprit when "only the last bit" gets saved.
+    mr.onpause = () => console.warn('[speech] ⚠ mr.onpause fired (something paused the recorder)');
+    mr.onerror = (e) => console.warn('[speech] mr.onerror:', e);
+    stream.getAudioTracks().forEach((t) => {
+      t.onended = () => console.warn(`[speech] ⚠ mic track ended (label="${t.label}") — stream taken away`);
+      t.onmute = () => console.warn('[speech] ⚠ mic track muted mid-recording');
+    });
+
     mr.onstop = async () => {
+      const elapsedMs = Math.round(performance.now() - tStart);
       stream.getTracks().forEach((t) => t.stop());
       activeRef.current = null;
       setListening(false);
       const blobMime = mr.mimeType || mime || 'audio/webm';
       const blob = new Blob(chunks, { type: blobMime });
-      if (blob.size === 0) return;
+      console.log(`[speech] ■ recording stop — ${chunks.length} chunks, ${blob.size} bytes, ${elapsedMs}ms elapsed, blob mime: ${blobMime}`);
+      if (blob.size === 0) { console.warn('[speech] empty blob — nothing to transcribe'); return; }
       try {
         const r = await fetch('/api/voice/transcribe', {
           method: 'POST',
@@ -143,19 +165,22 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
         if (!r.ok) {
           let msg = `transcribe ${r.status}`;
           try { const j = await r.json(); if (j.error) msg = j.error; } catch { /* ignore */ }
+          console.warn('[speech] transcribe failed:', msg);
           setError(msg);
           return;
         }
         const j = (await r.json()) as { text?: string };
         const text = (j.text || '').trim();
+        console.log('[speech] transcript:', JSON.stringify(text));
         if (text) onTextRef.current(text, true);
       } catch (err) {
+        console.warn('[speech] post failed:', err);
         setError(err instanceof Error ? err.message : String(err));
       }
     };
     activeRef.current = { kind: 'recorder', obj: mr, stream };
     setListening(true);
-    mr.start();
+    mr.start(500);   // emit a chunk every 500ms — easier to spot mid-stream disruption
   }, [mediaSupported]);
 
   const toggle = useCallback(() => {
