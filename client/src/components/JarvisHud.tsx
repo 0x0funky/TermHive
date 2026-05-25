@@ -125,15 +125,23 @@ async function processTtsQueue(): Promise<void> {
 }
 
 async function playApi(text: string): Promise<void> {
+  // Snapshot the generation at start of this play. If stopSpeaking bumps the
+  // counter while we're in an await (fetch / blob), abandon the play before
+  // creating an Audio element — otherwise the OLD playApi would still build
+  // and play its audio concurrent with whatever started after the stop.
+  const myGen = speakGen;
   const r = await fetch('/api/voice/tts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   });
+  if (myGen !== speakGen) return; // cancelled during fetch
   if (!r.ok) throw new Error(`tts ${r.status}: ${await r.text().catch(() => '')}`);
   const blob = await r.blob();
+  if (myGen !== speakGen) return; // cancelled during blob assembly
   const url = URL.createObjectURL(blob);
   const a = new Audio(url);
+  if (myGen !== speakGen) { URL.revokeObjectURL(url); return; }
   ttsCurrent = a;
   await new Promise<void>((resolve) => {
     let settled = false;
@@ -155,8 +163,11 @@ async function playApi(text: string): Promise<void> {
 
 async function playBrowser(text: string): Promise<void> {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const myGen = speakGen;
   const synth = window.speechSynthesis;
   return new Promise((resolve) => {
+    // If we were cancelled while waiting for the queue, don't queue more.
+    if (myGen !== speakGen) { resolve(); return; }
     const zh = synth.getVoices().find((v) => /^zh|cmn/i.test(v.lang));
     // Quiet warm-up absorbs the audio-device wake-up clip on the first line.
     if (!synth.speaking && !synth.pending) {
