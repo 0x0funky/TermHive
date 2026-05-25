@@ -1500,7 +1500,9 @@ input, select, textarea { font-family: inherit; }
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.42);
   backdrop-filter: blur(2px);
-  z-index: 260;
+  /* Above the canvas-toolbar (z-index 10000) so the Command drawer isn't
+     covered by the tile-mode header. */
+  z-index: 10100;
   animation: palette-in 0.12s ease-out;
 }
 .cmd-drawer {
@@ -1510,7 +1512,7 @@ input, select, textarea { font-family: inherit; }
   border-left: 1px solid var(--border-strong);
   box-shadow: -16px 0 48px rgba(0,0,0,0.4);
   display: flex; flex-direction: column;
-  z-index: 261;
+  z-index: 10101;
   animation: cmd-slide 0.16s ease-out;
 }
 @keyframes cmd-slide { from { transform: translateX(28px); opacity: 0; } }
