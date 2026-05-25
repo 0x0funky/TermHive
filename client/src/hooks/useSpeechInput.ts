@@ -139,59 +139,20 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
       return;
     }
 
-    const tStart = performance.now();
     const chunks: BlobPart[] = [];
-    let totalBytes = 0;
-    console.log('[speech] ▶ recording start — mime:', mime);
-
-    // Parallel analyser to see whether the mic is actually delivering audio.
-    // If the encoder ends up tiny (~silence) but the analyser shows volume,
-    // the loss is inside MediaRecorder. If the analyser is silent too, the
-    // source (mic / OS / BT) is gating.
-    const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    const sourceNode = audioCtx.createMediaStreamSource(stream);
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    sourceNode.connect(analyser);
-    const freq = new Uint8Array(analyser.frequencyBinCount);
-    let levelMax = 0;
-    const levelTimer = setInterval(() => {
-      analyser.getByteFrequencyData(freq);
-      const avg = freq.reduce((s, v) => s + v, 0) / freq.length;
-      const peak = Math.max(...freq);
-      levelMax = Math.max(levelMax, avg);
-      const bar = '█'.repeat(Math.round(avg / 8));
-      console.log(`[speech] mic level: avg=${avg.toFixed(0).padStart(3)}/255 peak=${peak.toString().padStart(3)} ${bar}`);
-    }, 500);
-
-    mr.onstart = () => console.log('[speech] mr.onstart fired (recorder active)');
-    mr.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) {
-        chunks.push(e.data);
-        totalBytes += e.data.size;
-        console.log(`[speech] chunk #${chunks.length}: ${e.data.size} bytes (total ${totalBytes})`);
-      }
-    };
-    // Track if anything externally pauses the recorder — surprises here are
-    // the most likely culprit when "only the last bit" gets saved.
-    mr.onpause = () => console.warn('[speech] ⚠ mr.onpause fired (something paused the recorder)');
-    mr.onerror = (e) => console.warn('[speech] mr.onerror:', e);
+    mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    mr.onerror = (e) => console.warn('[speech] recorder error:', e);
     stream.getAudioTracks().forEach((t) => {
-      t.onended = () => console.warn(`[speech] ⚠ mic track ended (label="${t.label}") — stream taken away`);
-      t.onmute = () => console.warn('[speech] ⚠ mic track muted mid-recording');
+      t.onended = () => console.warn('[speech] mic track ended — stream taken away');
     });
 
     mr.onstop = async () => {
-      const elapsedMs = Math.round(performance.now() - tStart);
-      clearInterval(levelTimer);
-      try { sourceNode.disconnect(); analyser.disconnect(); audioCtx.close(); } catch { /* ignore */ }
       stream.getTracks().forEach((t) => t.stop());
       activeRef.current = null;
       setListening(false);
       const blobMime = mr.mimeType || mime || 'audio/webm';
       const blob = new Blob(chunks, { type: blobMime });
-      console.log(`[speech] ■ recording stop — ${chunks.length} chunks, ${blob.size} bytes, ${elapsedMs}ms elapsed, peak avg level: ${levelMax.toFixed(0)}/255, blob mime: ${blobMime}`);
-      if (blob.size === 0) { console.warn('[speech] empty blob — nothing to transcribe'); return; }
+      if (blob.size === 0) return;
       try {
         const r = await fetch('/api/voice/transcribe', {
           method: 'POST',
@@ -201,16 +162,13 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
         if (!r.ok) {
           let msg = `transcribe ${r.status}`;
           try { const j = await r.json(); if (j.error) msg = j.error; } catch { /* ignore */ }
-          console.warn('[speech] transcribe failed:', msg);
           setError(msg);
           return;
         }
         const j = (await r.json()) as { text?: string };
         const text = (j.text || '').trim();
-        console.log('[speech] transcript:', JSON.stringify(text));
         if (text) onTextRef.current(text, true);
       } catch (err) {
-        console.warn('[speech] post failed:', err);
         setError(err instanceof Error ? err.message : String(err));
       }
     };

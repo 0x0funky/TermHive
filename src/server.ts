@@ -177,7 +177,6 @@ app.post(
       const cfg = loadVoiceConfig();
       const mime = String(req.headers['content-type'] || 'audio/webm');
       const audio = req.body as Buffer;
-      console.log(`[voice/transcribe] received: mime=${mime} ${audio?.length || 0} bytes provider=${cfg.stt.provider}`);
       if (!audio || audio.length === 0) {
         res.status(400).json({ error: 'no audio body' });
         return;
