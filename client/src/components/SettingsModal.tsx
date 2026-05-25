@@ -20,7 +20,12 @@ interface ProviderSpec {
 }
 
 interface VoiceConfig {
-  stt: { provider: 'browser' | 'openai' | 'gemini'; model: string; language: string };
+  stt: {
+    provider: 'browser' | 'openai' | 'gemini';
+    model: string;
+    language: string;
+    saveRecordings: boolean;
+  };
   tts: {
     enabled: boolean;
     provider: 'browser' | 'openai' | 'gemini';
@@ -210,6 +215,18 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
               >
                 {LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
               </select>
+            </Row>
+            <Row label="Debug">
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={!!cfg.stt.saveRecordings}
+                  onChange={(e) => setCfg({ ...cfg, stt: { ...cfg.stt, saveRecordings: e.target.checked } })}
+                />
+                <span>
+                  Save each clip to <code>~/.termhive/voice-debug/latest.webm</code> (to check mic quality)
+                </span>
+              </label>
             </Row>
           </section>
 

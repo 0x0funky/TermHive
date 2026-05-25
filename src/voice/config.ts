@@ -18,7 +18,14 @@ const VOICE_PATH = path.join(VOICE_DIR, 'voice.json');
 const KEYS_PATH = path.join(VOICE_DIR, 'api-keys.json');
 
 export interface VoiceConfig {
-  stt: { provider: 'browser' | 'openai' | 'gemini'; model: string; language: string };
+  stt: {
+    provider: 'browser' | 'openai' | 'gemini';
+    model: string;
+    language: string;
+    /** Save each captured clip to ~/.termhive/voice-debug/ — for diagnosing
+     *  bad transcription / mic quality. Off by default (privacy). */
+    saveRecordings: boolean;
+  };
   tts: {
     enabled: boolean;
     provider: 'browser' | 'openai' | 'gemini';
@@ -30,7 +37,7 @@ export interface VoiceConfig {
 }
 
 const DEFAULT: VoiceConfig = {
-  stt: { provider: 'browser', model: '', language: 'zh-TW' },
+  stt: { provider: 'browser', model: '', language: 'zh-TW', saveRecordings: false },
   tts: { enabled: true, provider: 'browser', model: '', voice: '', speed: 1.0 },
 };
 

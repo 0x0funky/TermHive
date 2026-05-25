@@ -1,5 +1,7 @@
 import 'dotenv/config'; // load OPENAI_API_KEY / GEMINI_API_KEY from .env
 import express from 'express';
+import fs from 'fs';
+import os from 'os';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
@@ -178,6 +180,23 @@ app.post(
       if (!audio || audio.length === 0) {
         res.status(400).json({ error: 'no audio body' });
         return;
+      }
+      // Optional debug: dump the clip so the user can listen and judge mic /
+      // STT quality. Off by default; toggled in Voice Settings.
+      if (cfg.stt.saveRecordings) {
+        try {
+          const dir = path.join(os.homedir(), '.termhive', 'voice-debug');
+          fs.mkdirSync(dir, { recursive: true });
+          const ext = mime.split('/')[1]?.split(';')[0] || 'webm';
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const ts = path.join(dir, `recording-${stamp}.${ext}`);
+          const latest = path.join(dir, `latest.${ext}`);
+          fs.writeFileSync(ts, audio);
+          fs.writeFileSync(latest, audio);
+          console.log(`[voice/debug] saved ${audio.length} bytes → ${latest}`);
+        } catch (err) {
+          console.warn('[voice/debug] save failed:', err);
+        }
       }
       let text = '';
       if (cfg.stt.provider === 'openai') {

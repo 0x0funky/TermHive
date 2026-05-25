@@ -9,7 +9,12 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export interface VoiceCfg {
-  stt: { provider: 'browser' | 'openai' | 'gemini'; model: string; language: string };
+  stt: {
+    provider: 'browser' | 'openai' | 'gemini';
+    model: string;
+    language: string;
+    saveRecordings: boolean;
+  };
   tts: {
     enabled: boolean;
     provider: 'browser' | 'openai' | 'gemini';
@@ -20,7 +25,7 @@ export interface VoiceCfg {
 }
 
 const DEFAULT_CFG: VoiceCfg = {
-  stt: { provider: 'browser', model: '', language: 'zh-TW' },
+  stt: { provider: 'browser', model: '', language: 'zh-TW', saveRecordings: false },
   tts: { enabled: true, provider: 'browser', model: '', voice: '', speed: 1.0 },
 };
 

@@ -36,11 +36,24 @@ interface TtsCfg {
 let ttsQueue: Array<{ spoken: string; cfg: TtsCfg }> = [];
 let ttsBusy = false;
 let ttsCurrent: HTMLAudioElement | null = null;
+/** Bumped by stopSpeaking — lets an in-flight play detect it was cancelled
+ *  and prevents its `finally` from clobbering the busy flag of the next
+ *  play that may already have started after the stop. */
+let speakGen = 0;
+/** Dedupe key against React StrictMode's effect-double-invocation in dev,
+ *  which would otherwise queue every spoken line twice. */
+let lastSpokenKey = '';
+let lastSpokenAt = 0;
 
 function stopSpeaking() {
   ttsQueue = [];
   ttsBusy = false;
-  if (ttsCurrent) { try { ttsCurrent.pause(); } catch { /* ignore */ } ttsCurrent = null; }
+  speakGen++;
+  if (ttsCurrent) {
+    const a = ttsCurrent;
+    ttsCurrent = null;
+    try { a.pause(); } catch { /* ignore */ }
+  }
   try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
 }
 
@@ -72,6 +85,13 @@ function speakReply(text: string, cfg: TtsCfg) {
   if (!cfg.enabled) return;   // master TTS off
   const spoken = extractSpoken(text);
   if (!spoken) return;
+  // React StrictMode double-invokes effects in dev; a brain-event reflow can
+  // also drop the same lastReply object through twice. Skip if we already
+  // queued this exact line in the last second.
+  const now = Date.now();
+  if (spoken === lastSpokenKey && now - lastSpokenAt < 1000) return;
+  lastSpokenKey = spoken;
+  lastSpokenAt = now;
   ttsQueue.push({ spoken, cfg });
   void processTtsQueue();
 }
@@ -79,6 +99,7 @@ function speakReply(text: string, cfg: TtsCfg) {
 async function processTtsQueue(): Promise<void> {
   if (ttsBusy || ttsQueue.length === 0) return;
   ttsBusy = true;
+  const myGen = speakGen;
   const job = ttsQueue.shift()!;
   try {
     if (job.cfg.provider === 'openai' || job.cfg.provider === 'gemini') {
@@ -89,8 +110,13 @@ async function processTtsQueue(): Promise<void> {
   } catch (err) {
     console.warn('[tts] failed:', err);
   } finally {
-    ttsBusy = false;
-    if (ttsQueue.length > 0) void processTtsQueue();
+    // If stopSpeaking ran during this play, a fresh processTtsQueue may
+    // already own ttsBusy — don't touch it (would let another play start
+    // concurrent with the new one and overlap audio).
+    if (myGen === speakGen) {
+      ttsBusy = false;
+      if (ttsQueue.length > 0) void processTtsQueue();
+    }
   }
 }
 
@@ -106,9 +132,19 @@ async function playApi(text: string): Promise<void> {
   const a = new Audio(url);
   ttsCurrent = a;
   await new Promise<void>((resolve) => {
-    const done = () => { URL.revokeObjectURL(url); if (ttsCurrent === a) ttsCurrent = null; resolve(); };
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      if (ttsCurrent === a) ttsCurrent = null;
+      resolve();
+    };
     a.onended = done;
     a.onerror = done;
+    // External pause (stopSpeaking) needs to release the promise too; without
+    // this the await hangs forever and the queue stalls.
+    a.onpause = () => { if (!a.ended) done(); };
     a.play().catch(done);
   });
 }
