@@ -156,6 +156,9 @@ export class Orchestrator {
   private busy = false;
   /** The codex child for the in-flight turn, so abortTurn() can kill it. */
   private currentChild: ReturnType<typeof spawn> | null = null;
+  /** True between an abortTurn() call and the next send() — keeps repeated
+   *  Stop presses from spamming "Cancelled by user" messages. */
+  private aborting = false;
 
   private readonly hiveMcpPath = path.resolve(__dirname_, '../hive-mcp-server.js');
 
@@ -236,6 +239,7 @@ export class Orchestrator {
     }
 
     this.busy = true;
+    this.aborting = false;
     if (conv.messages.length === 0) conv.title = makeTitle(text);
     this.append(conv, { role: 'user', text });
     this.setStatus('thinking');
@@ -268,23 +272,33 @@ export class Orchestrator {
       console.log('[orchestrator] abortTurn: nothing to kill (no child or not busy)');
       return false;
     }
-    this.currentChild = null;
-    try { child.kill(); console.log('[orchestrator] child.kill() called on pid', child.pid); }
-    catch (err) { console.warn('[orchestrator] child.kill() threw:', err); }
-    // On Windows the child was spawned with shell: true, so child is the
-    // cmd.exe wrapper. Best-effort kill the underlying codex process tree
-    // too — the wrapper kill doesn't always reach it.
+    // Don't null currentChild here — let the child's 'close' handler clear
+    // it when the process actually dies. That way a second Stop press can
+    // retry the kill if the first attempt missed (e.g. taskkill raced).
+
     if (process.platform === 'win32' && child.pid) {
+      // shell: true → child IS cmd.exe, with codex spawned underneath it.
+      // child.kill() would only kill cmd.exe and orphan codex (which keeps
+      // running until it finishes its task). taskkill /T /F kills the whole
+      // tree in one shot — that's the only thing that actually works here.
       try {
         const tk = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
         tk.on('exit', (code) => console.log('[orchestrator] taskkill exited with code', code));
         tk.on('error', (err) => console.warn('[orchestrator] taskkill spawn failed:', err));
       } catch (err) { console.warn('[orchestrator] taskkill spawn threw:', err); }
+    } else {
+      // Non-Windows: shell: false → child IS codex. SIGTERM works.
+      try { child.kill(); console.log('[orchestrator] child.kill() called on pid', child.pid); }
+      catch (err) { console.warn('[orchestrator] child.kill() threw:', err); }
     }
-    this.append(this.current(), {
-      role: 'system',
-      text: 'Cancelled by user — the Keeper stopped mid-turn.',
-    });
+
+    if (!this.aborting) {
+      this.aborting = true;
+      this.append(this.current(), {
+        role: 'system',
+        text: 'Cancelled by user — the Keeper stopped mid-turn.',
+      });
+    }
     return true;
   }
 
