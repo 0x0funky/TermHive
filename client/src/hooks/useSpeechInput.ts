@@ -111,8 +111,22 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
     if (!mediaSupported) { setError('mic not supported'); return; }
     setError(null);
     let stream: MediaStream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch { setError('microphone blocked — allow mic access for this site'); return; }
+    try {
+      // Disable the default browser audio processing — echoCancellation,
+      // noiseSuppression and AGC need a second or two to adapt and end up
+      // suppressing the first part of speech. We want the raw mic so STT
+      // gets the full utterance.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+    } catch {
+      setError('microphone blocked — allow mic access for this site');
+      return;
+    }
 
     const pick = (mimes: string[]) => mimes.find((m) => MediaRecorder.isTypeSupported(m));
     const mime = pick(['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']);
