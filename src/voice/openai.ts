@@ -31,9 +31,13 @@ export async function ttsOpenAI(
   text: string,
   model: string,
   voice: string,
+  speed = 1.0,
 ): Promise<{ audio: Buffer; mime: string }> {
   const apiKey = getApiKey('openai');
   if (!apiKey) throw new Error('OpenAI API key not set — add it in Voice Settings or .env');
+
+  // OpenAI clamps to [0.25, 4.0]; pin defensively before sending.
+  const clampedSpeed = Math.max(0.25, Math.min(4.0, speed || 1.0));
 
   const r = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
@@ -43,6 +47,7 @@ export async function ttsOpenAI(
       voice: voice || 'alloy',
       input: text,
       response_format: 'mp3',
+      speed: clampedSpeed,
     }),
   });
   if (!r.ok) throw new Error(`OpenAI TTS ${r.status}: ${await r.text()}`);

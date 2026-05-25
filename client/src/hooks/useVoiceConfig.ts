@@ -15,12 +15,13 @@ export interface VoiceCfg {
     provider: 'browser' | 'openai' | 'gemini';
     model: string;
     voice: string;
+    speed: number;
   };
 }
 
 const DEFAULT_CFG: VoiceCfg = {
   stt: { provider: 'browser', model: '', language: 'zh-TW' },
-  tts: { enabled: true, provider: 'browser', model: '', voice: '' },
+  tts: { enabled: true, provider: 'browser', model: '', voice: '', speed: 1.0 },
 };
 
 export function useVoiceConfig() {

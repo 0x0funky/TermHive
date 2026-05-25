@@ -205,7 +205,7 @@ app.post('/api/voice/tts', async (req, res) => {
     if (!text) { res.status(400).json({ error: 'no text' }); return; }
     let out: { audio: Buffer; mime: string };
     if (cfg.tts.provider === 'openai') {
-      out = await ttsOpenAI(text, cfg.tts.model, cfg.tts.voice);
+      out = await ttsOpenAI(text, cfg.tts.model, cfg.tts.voice, cfg.tts.speed);
     } else if (cfg.tts.provider === 'gemini') {
       out = await ttsGemini(text, cfg.tts.model, cfg.tts.voice);
     } else {

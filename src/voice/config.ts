@@ -24,12 +24,14 @@ export interface VoiceConfig {
     provider: 'browser' | 'openai' | 'gemini';
     model: string;
     voice: string;
+    /** Playback rate, 0.25–4.0. Honoured by OpenAI; Gemini ignores it. */
+    speed: number;
   };
 }
 
 const DEFAULT: VoiceConfig = {
   stt: { provider: 'browser', model: '', language: 'zh-TW' },
-  tts: { enabled: true, provider: 'browser', model: '', voice: '' },
+  tts: { enabled: true, provider: 'browser', model: '', voice: '', speed: 1.0 },
 };
 
 export function loadConfig(): VoiceConfig {

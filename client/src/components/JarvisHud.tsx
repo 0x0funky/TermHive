@@ -24,6 +24,7 @@ interface TtsCfg {
   provider: 'browser' | 'openai' | 'gemini';
   model: string;
   voice: string;
+  speed: number;
 }
 
 /**

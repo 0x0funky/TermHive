@@ -26,6 +26,7 @@ interface VoiceConfig {
     provider: 'browser' | 'openai' | 'gemini';
     model: string;
     voice: string;
+    speed: number;
   };
 }
 
@@ -260,6 +261,25 @@ export default function SettingsModal({ open, onClose, onSaved }: Props) {
                   ))}
                 </select>
               </Row>
+            )}
+            <Row label="Speed">
+              <select
+                value={String(cfg.tts.speed ?? 1.0)}
+                onChange={(e) => setCfg({ ...cfg, tts: { ...cfg.tts, speed: parseFloat(e.target.value) } })}
+              >
+                <option value="0.75">0.75× (slower)</option>
+                <option value="1">1× (normal)</option>
+                <option value="1.15">1.15×</option>
+                <option value="1.25">1.25×</option>
+                <option value="1.5">1.5× (faster)</option>
+                <option value="1.75">1.75×</option>
+                <option value="2">2× (fast)</option>
+              </select>
+            </Row>
+            {cfg.tts.provider === 'gemini' && (
+              <div className="settings-keys-note" style={{ marginTop: 4 }}>
+                Speed only applies to OpenAI — Gemini TTS ignores it.
+              </div>
             )}
           </section>
 
