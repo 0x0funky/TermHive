@@ -17,6 +17,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import Ic from './Icons';
 import { useSpeechInput } from '../hooks/useSpeechInput';
+import { stopSpeaking } from './JarvisHud';
 
 function renderMd(text: string): string {
   try { return marked.parse(text, { async: false }) as string; }
@@ -262,6 +263,13 @@ export default function CommandPanel({ open, onClose, wsRef, sttCfg }: Props) {
               <div className="cmd-thinking">
                 <span className="cmd-dot" /><span className="cmd-dot" /><span className="cmd-dot" />
                 The Keeper is working…
+                <button
+                  className="jv-stop"
+                  onClick={() => { stopSpeaking(); wsSend({ type: 'brain:abort' }); }}
+                  title="Stop"
+                >
+                  <Ic.stop size={11} /> Stop
+                </button>
               </div>
             )}
           </div>

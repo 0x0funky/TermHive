@@ -124,6 +124,7 @@ export type DaemonRequest =
   | { op: 'codex:new-thread'; agentId: string }
   | { op: 'brain:send'; message: string }
   | { op: 'brain:new' }
+  | { op: 'brain:abort' }
   | { op: 'brain:switch'; conversationId: string }
   | { op: 'brain:delete'; conversationId: string };
 

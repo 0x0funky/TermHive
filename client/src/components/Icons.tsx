@@ -36,6 +36,11 @@ const Ic = {
       <path d="M4 4l8 8M12 4l-8 8" />
     </svg>
   ),
+  stop: (p: IconProps = {}) => (
+    <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="currentColor" style={p.style}>
+      <rect x="4" y="4" width="8" height="8" rx="1.5" />
+    </svg>
+  ),
   play: (p: IconProps = {}) => (
     <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 16 16" fill="currentColor" style={p.style}>
       <path d="M5 3.5l7 4.5-7 4.5V3.5z" />

@@ -181,6 +181,7 @@ async function handleRequest(ws: WebSocket, req: DaemonRequest): Promise<void> {
           console.error('[daemon] brain send error:', err));
         return;
       case 'brain:new': orchestrator.newConversation(); return;
+      case 'brain:abort': orchestrator.abortTurn(); return;
       case 'brain:switch': orchestrator.switchConversation(req.conversationId); return;
       case 'brain:delete': orchestrator.deleteConversation(req.conversationId); return;
     }

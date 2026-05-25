@@ -1838,6 +1838,22 @@ input, select, textarea { font-family: inherit; }
   display: grid; place-items: center;
 }
 .jv-reply-x:hover { background: var(--bg-2); color: var(--text-0); }
+.jv-stop {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 8px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-2);
+  font-size: 10px; line-height: 1;
+  cursor: pointer;
+}
+.jv-stop:hover {
+  background: rgba(220, 80, 80, 0.15);
+  border-color: rgba(220, 80, 80, 0.4);
+  color: #ff8585;
+}
 .jv-compose {
   display: flex; align-items: center; gap: 6px;
   padding: 9px 10px; border-top: 1px solid var(--border); background: var(--bg-1);

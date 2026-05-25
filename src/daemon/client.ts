@@ -200,6 +200,10 @@ export class DaemonClient {
   newBrainConversation(): void {
     this.command({ op: 'brain:new' });
   }
+  /** Cancel the in-flight Keeper turn (kill the Codex child process). */
+  abortBrain(): void {
+    this.command({ op: 'brain:abort' });
+  }
   /** Switch the active brain conversation. */
   switchBrainConversation(conversationId: string): void {
     this.command({ op: 'brain:switch', conversationId });

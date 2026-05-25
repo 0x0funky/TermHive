@@ -350,6 +350,10 @@ wss.on('connection', (ws) => {
         daemon.newBrainConversation();
         break;
       }
+      case 'brain:abort': {
+        daemon.abortBrain();
+        break;
+      }
       case 'brain:switch': {
         daemon.switchBrainConversation(msg.conversationId);
         break;

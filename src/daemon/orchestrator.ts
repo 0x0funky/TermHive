@@ -154,6 +154,8 @@ export class Orchestrator {
   private currentId = '';
   private status: BrainStatus = 'idle';
   private busy = false;
+  /** The codex child for the in-flight turn, so abortTurn() can kill it. */
+  private currentChild: ReturnType<typeof spawn> | null = null;
 
   private readonly hiveMcpPath = path.resolve(__dirname_, '../hive-mcp-server.js');
 
@@ -253,6 +255,32 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * Cancel the in-flight Keeper turn. Kills the running codex child; its
+   * `close` handler then resolves runCodexTurn, send()'s finally block runs,
+   * busy clears, status flips back to idle. A system marker is appended so
+   * the conversation shows what happened.
+   */
+  abortTurn(): boolean {
+    const child = this.currentChild;
+    if (!child || !this.busy) return false;
+    this.currentChild = null;
+    try { child.kill(); } catch { /* ignore */ }
+    // On Windows the child was spawned with shell: true, so child is the
+    // cmd.exe wrapper. Best-effort kill the underlying codex process tree
+    // too — the wrapper kill doesn't always reach it.
+    if (process.platform === 'win32' && child.pid) {
+      try {
+        spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+      } catch { /* ignore */ }
+    }
+    this.append(this.current(), {
+      role: 'system',
+      text: 'Cancelled by user — the Keeper stopped mid-turn.',
+    });
+    return true;
+  }
+
   // ─────────────────────────── Codex turn ───────────────────────────
 
   private runCodexTurn(conv: Conversation, prompt: string): Promise<void> {
@@ -295,6 +323,9 @@ export class Orchestrator {
         return;
       }
 
+      // Track the child so abortTurn() can find and kill it.
+      this.currentChild = child;
+
       let stdoutBuf = '';
       let stderrBuf = '';
       let producedAssistant = false;
@@ -329,6 +360,7 @@ export class Orchestrator {
       });
 
       child.on('close', (code) => {
+        if (this.currentChild === child) this.currentChild = null;
         // Safety net: if no agent_message streamed through, fall back to the
         // canonical last-message file Codex wrote.
         if (!producedAssistant) {

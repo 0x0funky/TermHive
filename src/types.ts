@@ -59,6 +59,7 @@ export type WSClientMessage =
   | { type: 'codex:new-thread'; agentId: string }
   | { type: 'brain:send'; message: string }
   | { type: 'brain:new' }
+  | { type: 'brain:abort' }
   | { type: 'brain:switch'; conversationId: string }
   | { type: 'brain:delete'; conversationId: string };
 

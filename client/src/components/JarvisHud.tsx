@@ -49,7 +49,7 @@ let speakGen = 0;
 let lastSpokenKey = '';
 let lastSpokenAt = 0;
 
-function stopSpeaking() {
+export function stopSpeaking() {
   ttsQueue = [];
   ttsBusy = false;
   speakGen++;
@@ -335,6 +335,13 @@ export default function JarvisHud({
                 <span className="jv-reply-w">
                   <span className="cmd-dot" /><span className="cmd-dot" /><span className="cmd-dot" />
                   The Keeper is working…
+                  <button
+                    className="jv-stop"
+                    onClick={() => { stopSpeaking(); send({ type: 'brain:abort' }); }}
+                    title="Stop"
+                  >
+                    <Ic.stop size={11} /> Stop
+                  </button>
                 </span>
               ) : (
                 <>
