@@ -144,6 +144,26 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
     let totalBytes = 0;
     console.log('[speech] ▶ recording start — mime:', mime);
 
+    // Parallel analyser to see whether the mic is actually delivering audio.
+    // If the encoder ends up tiny (~silence) but the analyser shows volume,
+    // the loss is inside MediaRecorder. If the analyser is silent too, the
+    // source (mic / OS / BT) is gating.
+    const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const sourceNode = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    sourceNode.connect(analyser);
+    const freq = new Uint8Array(analyser.frequencyBinCount);
+    let levelMax = 0;
+    const levelTimer = setInterval(() => {
+      analyser.getByteFrequencyData(freq);
+      const avg = freq.reduce((s, v) => s + v, 0) / freq.length;
+      const peak = Math.max(...freq);
+      levelMax = Math.max(levelMax, avg);
+      const bar = '█'.repeat(Math.round(avg / 8));
+      console.log(`[speech] mic level: avg=${avg.toFixed(0).padStart(3)}/255 peak=${peak.toString().padStart(3)} ${bar}`);
+    }, 500);
+
     mr.onstart = () => console.log('[speech] mr.onstart fired (recorder active)');
     mr.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
@@ -163,12 +183,14 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
 
     mr.onstop = async () => {
       const elapsedMs = Math.round(performance.now() - tStart);
+      clearInterval(levelTimer);
+      try { sourceNode.disconnect(); analyser.disconnect(); audioCtx.close(); } catch { /* ignore */ }
       stream.getTracks().forEach((t) => t.stop());
       activeRef.current = null;
       setListening(false);
       const blobMime = mr.mimeType || mime || 'audio/webm';
       const blob = new Blob(chunks, { type: blobMime });
-      console.log(`[speech] ■ recording stop — ${chunks.length} chunks, ${blob.size} bytes, ${elapsedMs}ms elapsed, blob mime: ${blobMime}`);
+      console.log(`[speech] ■ recording stop — ${chunks.length} chunks, ${blob.size} bytes, ${elapsedMs}ms elapsed, peak avg level: ${levelMax.toFixed(0)}/255, blob mime: ${blobMime}`);
       if (blob.size === 0) { console.warn('[speech] empty blob — nothing to transcribe'); return; }
       try {
         const r = await fetch('/api/voice/transcribe', {
