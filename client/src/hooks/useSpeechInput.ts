@@ -142,7 +142,7 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
     const tStart = performance.now();
     const chunks: BlobPart[] = [];
     let totalBytes = 0;
-    console.log('[speech] ▶ recording start — mime:', mime, 'timeslice: 500ms');
+    console.log('[speech] ▶ recording start — mime:', mime);
 
     mr.onstart = () => console.log('[speech] mr.onstart fired (recorder active)');
     mr.ondataavailable = (e) => {
@@ -194,7 +194,9 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
     };
     activeRef.current = { kind: 'recorder', obj: mr, stream };
     setListening(true);
-    mr.start(500);   // emit a chunk every 500ms — easier to spot mid-stream disruption
+    // No timeslice — one ondataavailable on stop() with the complete blob.
+    // Push-to-talk clips are short; chunking added complexity without value.
+    mr.start();
   }, [mediaSupported]);
 
   const toggle = useCallback(() => {
