@@ -81,6 +81,10 @@ export default function CommandPanel({ open, onClose, wsRef, sttCfg }: Props) {
   const [input, setInput] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // "Stick to bottom" mode — true while the user is parked at the bottom of
+  // the transcript. As soon as they scroll up to read history, we stop
+  // auto-following new messages so they're not yanked back down.
+  const stickBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const speech = useSpeechInput(
     (text, final) => { setInput(text); if (final && text.trim()) send(text); },
@@ -137,8 +141,25 @@ export default function CommandPanel({ open, onClose, wsRef, sttCfg }: Props) {
 
   useEffect(() => {
     const el = bodyRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    // Re-snap to the bottom only if the user is still parked there. The
+    // panel opening always lands at the bottom (fresh view).
+    if (stickBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages, status, open]);
+
+  // Re-engage "stick to bottom" when the panel opens (fresh view).
+  useEffect(() => {
+    if (open) stickBottomRef.current = true;
+  }, [open]);
+
+  const onBodyScroll = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    // Threshold: within 30px of the bottom counts as "at the bottom" — gives
+    // a little forgiveness for sub-pixel layout.
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+    stickBottomRef.current = atBottom;
+  }, []);
 
   if (!open) return null;
 
@@ -239,7 +260,7 @@ export default function CommandPanel({ open, onClose, wsRef, sttCfg }: Props) {
             ))}
           </div>
         ) : (
-          <div className="cmd-body scroll" ref={bodyRef}>
+          <div className="cmd-body scroll" ref={bodyRef} onScroll={onBodyScroll}>
             {messages.length === 0 ? (
               <div className="cmd-intro">
                 <div className="cmd-intro-mark"><Ic.logo size={24} /></div>
