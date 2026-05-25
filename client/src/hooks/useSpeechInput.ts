@@ -139,20 +139,23 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
       return;
     }
 
+    const tStart = performance.now();
     const chunks: BlobPart[] = [];
     mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
     mr.onerror = (e) => console.warn('[speech] recorder error:', e);
     stream.getAudioTracks().forEach((t) => {
-      t.onended = () => console.warn('[speech] mic track ended — stream taken away');
+      t.onended = () => console.warn('[speech] ⚠ mic track ended — stream taken away');
     });
 
     mr.onstop = async () => {
+      const elapsedMs = Math.round(performance.now() - tStart);
       stream.getTracks().forEach((t) => t.stop());
       activeRef.current = null;
       setListening(false);
       const blobMime = mr.mimeType || mime || 'audio/webm';
       const blob = new Blob(chunks, { type: blobMime });
-      if (blob.size === 0) return;
+      console.log(`[speech] stop — ${chunks.length} chunk(s), ${blob.size} bytes, ${elapsedMs}ms elapsed`);
+      if (blob.size === 0) { console.warn('[speech] empty blob'); return; }
       try {
         const r = await fetch('/api/voice/transcribe', {
           method: 'POST',
@@ -162,11 +165,13 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
         if (!r.ok) {
           let msg = `transcribe ${r.status}`;
           try { const j = await r.json(); if (j.error) msg = j.error; } catch { /* ignore */ }
+          console.warn('[speech] transcribe failed:', msg);
           setError(msg);
           return;
         }
         const j = (await r.json()) as { text?: string };
         const text = (j.text || '').trim();
+        console.log('[speech] transcript:', JSON.stringify(text));
         if (text) onTextRef.current(text, true);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -175,8 +180,8 @@ export function useSpeechInput(onText: SpeechResultHandler, options: SpeechOptio
     activeRef.current = { kind: 'recorder', obj: mr, stream };
     setListening(true);
     // No timeslice — one ondataavailable on stop() with the complete blob.
-    // Push-to-talk clips are short; chunking added complexity without value.
     mr.start();
+    console.log('[speech] ▶ mr.start() — mime:', mime);
   }, [mediaSupported]);
 
   const toggle = useCallback(() => {

@@ -263,16 +263,23 @@ export class Orchestrator {
    */
   abortTurn(): boolean {
     const child = this.currentChild;
-    if (!child || !this.busy) return false;
+    console.log('[orchestrator] abortTurn called — busy:', this.busy, 'child pid:', child?.pid ?? null);
+    if (!child || !this.busy) {
+      console.log('[orchestrator] abortTurn: nothing to kill (no child or not busy)');
+      return false;
+    }
     this.currentChild = null;
-    try { child.kill(); } catch { /* ignore */ }
+    try { child.kill(); console.log('[orchestrator] child.kill() called on pid', child.pid); }
+    catch (err) { console.warn('[orchestrator] child.kill() threw:', err); }
     // On Windows the child was spawned with shell: true, so child is the
     // cmd.exe wrapper. Best-effort kill the underlying codex process tree
     // too — the wrapper kill doesn't always reach it.
     if (process.platform === 'win32' && child.pid) {
       try {
-        spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
-      } catch { /* ignore */ }
+        const tk = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+        tk.on('exit', (code) => console.log('[orchestrator] taskkill exited with code', code));
+        tk.on('error', (err) => console.warn('[orchestrator] taskkill spawn failed:', err));
+      } catch (err) { console.warn('[orchestrator] taskkill spawn threw:', err); }
     }
     this.append(this.current(), {
       role: 'system',
