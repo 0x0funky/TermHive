@@ -1829,6 +1829,15 @@ input, select, textarea { font-family: inherit; }
 }
 .jv-reply-w { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
 .jv-reply-t { word-break: break-word; }
+.jv-reply { position: relative; }
+.jv-reply-x {
+  position: absolute; top: 4px; right: 4px;
+  width: 18px; height: 18px;
+  background: transparent; border: none; border-radius: 4px;
+  color: var(--text-3); cursor: pointer;
+  display: grid; place-items: center;
+}
+.jv-reply-x:hover { background: var(--bg-2); color: var(--text-0); }
 .jv-compose {
   display: flex; align-items: center; gap: 6px;
   padding: 9px 10px; border-top: 1px solid var(--border); background: var(--bg-1);

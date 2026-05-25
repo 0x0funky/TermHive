@@ -36,6 +36,10 @@ interface TtsCfg {
 let ttsQueue: Array<{ spoken: string; cfg: TtsCfg }> = [];
 let ttsBusy = false;
 let ttsCurrent: HTMLAudioElement | null = null;
+/** Survive HUD remount: don't re-speak a reply we already spoke. The HUD
+ *  un/remounts every time the Command panel toggles, which would otherwise
+ *  re-fire the lastReply useEffect and re-speak the stale message. */
+let lastSpokenTs = 0;
 /** Bumped by stopSpeaking — lets an in-flight play detect it was cancelled
  *  and prevents its `finally` from clobbering the busy flag of the next
  *  play that may already have started after the stop. */
@@ -176,6 +180,7 @@ interface Props {
   /** Brain state, fed from App (whose ws.onmessage is the reliable sink). */
   working: boolean;
   lastReply: { text: string; ts: number } | null;
+  onClearReply: () => void;
   sttCfg: { provider: 'browser' | 'openai' | 'gemini'; language: string };
   ttsCfg: TtsCfg;
   wake: {
@@ -190,7 +195,7 @@ interface Props {
 }
 
 export default function JarvisHud({
-  send, working, lastReply, sttCfg, ttsCfg, wake, awaiting, running, idle, onSelectAgent, onOpenFull,
+  send, working, lastReply, onClearReply, sttCfg, ttsCfg, wake, awaiting, running, idle, onSelectAgent, onOpenFull,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -223,9 +228,14 @@ export default function JarvisHud({
     if (!voiceOut) stopSpeaking();
   }, [voiceOut]);
 
-  // Speak each new Keeper reply when voice replies are on.
+  // Speak each new Keeper reply when voice replies are on. The lastSpokenTs
+  // guard means a HUD remount (Command panel toggle) doesn't re-speak the
+  // same reply.
   useEffect(() => {
-    if (lastReply && voiceOutRef.current) speakReply(lastReply.text, ttsCfgRef.current);
+    if (!lastReply) return;
+    if (lastReply.ts === lastSpokenTs) return;
+    lastSpokenTs = lastReply.ts;
+    if (voiceOutRef.current) speakReply(lastReply.text, ttsCfgRef.current);
   }, [lastReply]);
 
   // A new turn starting cuts off any in-progress speech.
@@ -316,10 +326,19 @@ export default function JarvisHud({
                   The Keeper is working…
                 </span>
               ) : (
-                <div
-                  className="jv-reply-t cmd-md"
-                  dangerouslySetInnerHTML={{ __html: renderMd(reply) }}
-                />
+                <>
+                  <button
+                    className="jv-reply-x"
+                    onClick={() => { stopSpeaking(); onClearReply(); }}
+                    title="Clear reply"
+                  >
+                    <Ic.x size={10} />
+                  </button>
+                  <div
+                    className="jv-reply-t cmd-md"
+                    dangerouslySetInnerHTML={{ __html: renderMd(reply) }}
+                  />
+                </>
               )}
             </div>
           )}

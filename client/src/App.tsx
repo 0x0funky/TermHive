@@ -59,6 +59,7 @@ export default function App() {
   const commandOpenRef = useRef(commandOpen);
   commandOpenRef.current = commandOpen;
   const brainBusyRef = useRef(false);
+  const brainConvIdRef = useRef('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem('termhive:theme') as Theme) || 'dark';
@@ -141,6 +142,15 @@ export default function App() {
         }
       } else if (p?.kind === 'append' && p.message?.role === 'assistant') {
         setBrainReply({ text: String(p.message.text || ''), ts: Date.now() });
+      } else if (p?.kind === 'state') {
+        // Conversation switch (new / picked from history) — drop the stale
+        // reply so the HUD doesn't show or re-speak a message that belongs
+        // to a different conversation.
+        const cid = p.state?.currentId;
+        if (cid && cid !== brainConvIdRef.current) {
+          brainConvIdRef.current = cid;
+          setBrainReply(null);
+        }
       }
     }
     if (msg.type === 'agent:status' && msg.agentId && msg.status) {
@@ -654,6 +664,7 @@ export default function App() {
           send={send}
           working={brainWorking}
           lastReply={brainReply}
+          onClearReply={() => setBrainReply(null)}
           sttCfg={{ provider: voice.cfg.stt.provider, language: voice.cfg.stt.language }}
           ttsCfg={voice.cfg.tts}
           wake={{
