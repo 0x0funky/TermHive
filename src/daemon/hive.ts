@@ -20,8 +20,10 @@ import * as runtime from './runtime.js';
 import type { Agent, Project } from '../types.js';
 import { hookEvents } from './hook-events.js';
 
-/** Upper bound on how long `ask_agent` waits for a Claude turn to finish. */
-const TURN_TIMEOUT_MS = 120_000;
+/** Upper bound on how long `ask_agent` waits for a Claude turn to finish.
+ *  When this fires we don't assume the agent failed — we check whether the
+ *  PTY is still alive and return 'busy' vs 'crashed' accordingly. */
+const TURN_TIMEOUT_MS = 300_000; // 5 min
 
 // ─────────────────────────── Org snapshot ───────────────────────────
 
@@ -69,8 +71,26 @@ export function orgSnapshot(liveStatus: (agentId: string) => string): OrgSnapsho
 
 export interface AskAgentResult {
   ok: boolean;
-  /** replied | no-reply | timeout | delivered | not-running | not-found */
-  status: 'replied' | 'no-reply' | 'timeout' | 'delivered' | 'not-running' | 'not-found';
+  /**
+   * replied — turn finished, reply captured
+   * no-reply — turn finished, no extractable reply
+   * busy — turn didn't finish in the wait window, agent is STILL RUNNING
+   *        (do not resend; just wait and ask again later)
+   * crashed — turn didn't finish and the agent process is no longer alive
+   * delivered — non-Claude CLI; message delivered but reply not captured
+   * not-running — agent isn't running at all
+   * not-found — project or agent name didn't resolve
+   * timeout — legacy alias kept for back-compat; new code uses busy/crashed
+   */
+  status:
+    | 'replied'
+    | 'no-reply'
+    | 'busy'
+    | 'crashed'
+    | 'timeout'
+    | 'delivered'
+    | 'not-running'
+    | 'not-found';
   projectId?: string;
   projectName?: string;
   agentName?: string;
@@ -315,12 +335,28 @@ export async function askAgentDispatch(
 
     const outcome = await turnEnded;
     if (outcome === 'timeout') {
+      // Don't assume failure — check if the agent is still alive. If yes, it
+      // is BUSY (still working); the Keeper must NOT resend. If no, it
+      // CRASHED during the turn.
+      const stillAlive = runtime.isAgentRunning(agent.id);
+      if (stillAlive) {
+        return {
+          ok: true,
+          status: 'busy',
+          ...base,
+          reply: null,
+          error:
+            `Agent is still working after ${Math.round(TURN_TIMEOUT_MS / 1000)}s — ` +
+            `do NOT resend the same message. Wait and ask again later, or check the ` +
+            `agent's terminal for progress.`,
+        };
+      }
       return {
-        ok: true,
-        status: 'timeout',
+        ok: false,
+        status: 'crashed',
         ...base,
         reply: null,
-        error: 'Agent did not finish within the wait window.',
+        error: 'Agent process died during the turn — report to the user; do not resend.',
       };
     }
 

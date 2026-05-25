@@ -656,10 +656,26 @@ async function main() {
               `${who} finished its turn but no reply text could be captured. ` +
               `Check the agent's terminal, or ask again.`,
             );
-          case 'timeout':
+          case 'busy':
             return text(
-              `${who} received the message and is still working (did not finish ` +
-              `within the wait window). Ask again shortly to collect the result.`,
+              `${who} is still working on the previous message (did not finish ` +
+              `within the wait window, but the process is alive and running). ` +
+              `Do NOT resend the same message — that would queue a duplicate. ` +
+              `Wait a bit and then call ask_agent again with a short check-in ` +
+              `like "are you done?" to collect the reply.`,
+            );
+          case 'crashed':
+            return err(
+              `${who}'s process died during the turn. The message may have been ` +
+              `partially processed. Do NOT auto-resend — report the crash to the ` +
+              `user; they will decide whether to restart the agent and retry.`,
+            );
+          case 'timeout':
+            // Legacy fallback (older daemon may still emit this). Treat as busy.
+            return text(
+              `${who} did not finish within the wait window. The agent may still ` +
+              `be working — do NOT resend. Check the agent's terminal or ask ` +
+              `again later.`,
             );
           case 'delivered':
             return text(
