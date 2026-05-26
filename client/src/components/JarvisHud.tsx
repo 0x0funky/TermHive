@@ -194,6 +194,10 @@ interface Props {
   onClearReply: () => void;
   sttCfg: { provider: 'browser' | 'openai' | 'gemini'; language: string };
   ttsCfg: TtsCfg;
+  /** True when the App-level header voice (⌘; hotkey / header mic button)
+   *  is recording — lets the orb pulse "listening" so the user sees the
+   *  hotkey took effect even when their eyes are on the HUD, not the header. */
+  headerListening: boolean;
   wake: {
     enabled: boolean; supported: boolean; armed: boolean; phrase: string;
     onToggle: () => void; onPhraseChange: (v: string) => void;
@@ -206,7 +210,7 @@ interface Props {
 }
 
 export default function JarvisHud({
-  send, working, lastReply, onClearReply, sttCfg, ttsCfg, wake, awaiting, running, idle, onSelectAgent, onOpenFull,
+  send, working, lastReply, onClearReply, sttCfg, ttsCfg, headerListening, wake, awaiting, running, idle, onSelectAgent, onOpenFull,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -259,7 +263,7 @@ export default function JarvisHud({
   }, [expanded]);
 
   const state = working ? 'thinking'
-    : (speech.listening || wake.armed) ? 'listening'
+    : (speech.listening || wake.armed || headerListening) ? 'listening'
     : 'idle';
 
   return (

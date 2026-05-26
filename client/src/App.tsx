@@ -679,6 +679,7 @@ export default function App() {
           onClearReply={() => setBrainReply(null)}
           sttCfg={{ provider: voice.cfg.stt.provider, language: voice.cfg.stt.language }}
           ttsCfg={voice.cfg.tts}
+          headerListening={quickSpeech.listening}
           wake={{
             enabled: wakeEnabled,
             supported: wake.supported,
