@@ -259,6 +259,13 @@ export default function App() {
         e.preventDefault(); e.stopPropagation();
         setCommandOpen((o) => !o); return;
       }
+      // ⌘; / Ctrl+; — toggle voice recording to the Keeper (auto-sends on
+      // final result via the header quick-command's speech callback).
+      if (mod && e.key === ';') {
+        e.preventDefault(); e.stopPropagation();
+        quickSpeechRef.current?.toggle();
+        return;
+      }
       if (mod && /^[1-9]$/.test(e.key)) {
         e.preventDefault(); e.stopPropagation();
         const i = parseInt(e.key, 10) - 1;
@@ -364,6 +371,10 @@ export default function App() {
     (text, final) => { setQuickCmd(text); if (final && text.trim()) fireQuickCmd(text); },
     { provider: voice.cfg.stt.provider, language: voice.cfg.stt.language },
   );
+  // Keep toggle reachable from the global keydown listener without forcing it
+  // to re-bind on every render.
+  const quickSpeechRef = useRef(quickSpeech);
+  quickSpeechRef.current = quickSpeech;
 
   // Always-on wake word — "Hey Queen, <command>" drives the brain hands-free.
   const wake = useWakeWord({
@@ -634,6 +645,7 @@ export default function App() {
         <div className="st-r">
           <span className="st-kbd"><kbd>{MOD}K</kbd> palette</span>
           <span className="st-kbd"><kbd>{MOD}J</kbd> command</span>
+          <span className="st-kbd"><kbd>{MOD};</kbd> voice</span>
           <span className="st-kbd"><kbd>{MOD}1-5</kbd> agent</span>
           <span className="st-item ok">ws · connected</span>
         </div>
